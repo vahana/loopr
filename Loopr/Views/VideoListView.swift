@@ -19,6 +19,9 @@ struct VideoListView: View {
     // Function to call when a video is selected
     let onSelectVideo: (Video) -> Void
     
+    // Network manager for checking cache status
+    let networkManager: NetworkManager
+    
     // MARK: - Body
     
     var body: some View {
@@ -42,7 +45,7 @@ struct VideoListView: View {
                             onSelectVideo(video)
                         } label: {
                             // Custom list item for each video
-                            VideoListItemView(video: video)
+                            VideoListItemView(video: video, networkManager: networkManager)
                         }
                         // Use the card button style (specific to tvOS)
                         .buttonStyle(.card)
@@ -57,6 +60,7 @@ struct VideoListView: View {
 // List item view for an individual video
 struct VideoListItemView: View {
     let video: Video
+    let networkManager: NetworkManager
     @State private var thumbnailImage: UIImage?
     @State private var isLoadingThumbnail = false
     
@@ -109,11 +113,20 @@ struct VideoListItemView: View {
             
             // Video info section
             VStack(alignment: .leading, spacing: 8) {
-                // Video title
-                Text(video.title)
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .lineLimit(1)
+                HStack {
+                    // Video title
+                    Text(video.title)
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    
+                    // Cache indicator
+                    if networkManager.isVideoCached(video: video) {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .foregroundColor(.green)
+                            .font(.caption)
+                    }
+                }
                 
                 // Video description
                 Text(video.description)

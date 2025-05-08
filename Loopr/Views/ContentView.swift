@@ -7,7 +7,6 @@ struct ContentView: View {
     @State private var isShowingPlayer = false
     @State private var selectedVideo: Video?
     @State private var seekStepSize: Double = 5.0
-    @State private var showingNetworkVideos = true
     @State private var showingSettings = false
     
     // Add StateObject for network manager
@@ -77,21 +76,13 @@ struct ContentView: View {
                     }
                     .padding()
                     
-                    // Source selector
-                    Picker("Video Source", selection: $showingNetworkVideos) {
-                        Text("Network").tag(true)
-                        Text("Samples").tag(false)
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal)
-                    
-                    // Show either network or sample videos
                     VideoListView(
-                        videos: showingNetworkVideos ? networkManager.videos : sampleVideos,
+                        videos: networkManager.videos,
                         onSelectVideo: { video in
                             selectedVideo = video
                             isShowingPlayer = true
-                        }
+                        },
+                        networkManager: networkManager  // Pass network manager to check cache status
                     )
                 }
                 .sheet(isPresented: $showingSettings) {
