@@ -32,7 +32,8 @@ struct ContentView: View {
                     VideoPlayerView(
                         video: video,
                         onBack: { isShowingPlayer = false },
-                        seekStepSize: seekStepSize
+                        seekStepSize: seekStepSize,
+                        networkManager: networkManager  // Pass the network manager
                     )
                 }
             } else {
@@ -88,6 +89,9 @@ struct ContentView: View {
         .onAppear {
             // Automatically scan for server when view appears
             networkManager.scanForServer()
+            
+            // Clean expired cache
+            VideoCacheManager.shared.cleanExpiredCache()
         }
     }
 }

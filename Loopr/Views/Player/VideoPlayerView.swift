@@ -31,15 +31,18 @@ struct VideoPlayerView: View {
     // Timer to update player state
     let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
     
+    let networkManager: NetworkManager
+    
     // MARK: - Initialization
     
     // Custom initializer to set up the player
-    init(video: Video, onBack: @escaping () -> Void, seekStepSize: Double = 5.0) {
+    init(video: Video, onBack: @escaping () -> Void, seekStepSize: Double = 5.0, networkManager: NetworkManager) {
         self.video = video
         self.onBack = onBack
+        self.networkManager = networkManager
         
-        // Initialize the state variables with underscore prefix
-        let initialPlayer = AVPlayer(url: video.url)
+        // Initialize with placeholder player first
+        let initialPlayer = AVPlayer()
         _player = State(initialValue: initialPlayer)
         _viewModel = StateObject(wrappedValue: VideoControlBarViewModel(player: initialPlayer))
         
@@ -172,21 +175,29 @@ struct VideoPlayerView: View {
     
     // Set up the player initially
     private func setupPlayer() {
-        // Load duration
-        if let asset = player.currentItem?.asset {
-            Task {
-                do {
-                    let durationValue = try await asset.load(.duration)
-                    viewModel.duration = durationValue.seconds
-                    // Set initial loop end to video end
-                    viewModel.loopEndTime = viewModel.duration
-                } catch {
-                    print("Failed to load duration: \(error)")
+        // Try to load from cache
+        networkManager.loadVideoWithCache(from: video.url) { finalURL in
+            // Create player with the cached URL or original if caching failed
+            let player = AVPlayer(url: finalURL)
+            self.player = player
+            self.viewModel.player = player
+            
+            // Load duration
+            if let asset = player.currentItem?.asset {
+                Task {
+                    do {
+                        let durationValue = try await asset.load(.duration)
+                        self.viewModel.duration = durationValue.seconds
+                        // Set initial loop end to video end
+                        self.viewModel.loopEndTime = self.viewModel.duration
+                    } catch {
+                        print("Failed to load duration: \(error)")
+                    }
                 }
             }
+            
+            // Start playing
+            player.play()
         }
-        
-        // Start playing
-        player.play()
     }
 }

@@ -93,6 +93,23 @@ class NetworkManager: ObservableObject {
         // This is more complex and requires Network framework
         // For simplicity, we're using manual host entry above
     }
+    func loadVideoWithCache(from url: URL, completion: @escaping (URL) -> Void) {
+        // Check if video is cached
+        if let cachedURL = VideoCacheManager.shared.getCachedURL(for: url) {
+            completion(cachedURL)
+            return
+        }
+        
+        // Not cached, download and cache
+        VideoCacheManager.shared.cacheVideo(from: url) { cachedURL in
+            if let cachedURL = cachedURL {
+                completion(cachedURL)
+            } else {
+                // Fallback to original URL if caching fails
+                completion(url)
+            }
+        }
+    }
 }
 
 // Model for parsing the video index JSON
