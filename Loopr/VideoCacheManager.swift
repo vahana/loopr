@@ -231,6 +231,35 @@ class VideoCacheManager {
     func deleteCache(for url: URL) {
         try? fileManager.removeItem(at: url)
     }
+    
+    func updateLastPlayed(for url: URL) {
+        let timestamp = Date().timeIntervalSince1970
+        
+        // Get the existing dictionary or create a new one
+        var lastPlayed = UserDefaults.standard.dictionary(forKey: "videoLastPlayed") as? [String: Double] ?? [:]
+        
+        // Use the URL string as key
+        let key = url.absoluteString
+        lastPlayed[key] = timestamp
+        
+        // Save back to UserDefaults
+        UserDefaults.standard.set(lastPlayed, forKey: "videoLastPlayed")
+    }
+
+    // Get when a video was last played (returns nil if never played)
+    func getLastPlayed(for url: URL) -> Date? {
+        guard let lastPlayed = UserDefaults.standard.dictionary(forKey: "videoLastPlayed") as? [String: Double] else {
+            return nil
+        }
+        
+        let key = url.absoluteString
+        guard let timestamp = lastPlayed[key] else {
+            return nil
+        }
+        
+        return Date(timeIntervalSince1970: timestamp)
+    }
+
 }
 
 // Extension to check if UserDefaults contains a key

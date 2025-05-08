@@ -95,6 +95,9 @@ struct VideoPlayerView: View {
             // When the view appears, set up the player
             setupPlayer()
             
+            // Record that this video was played
+            VideoCacheManager.shared.updateLastPlayed(for: video.url)
+            
             // Set initial focus to play button
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 focusedControl = .play

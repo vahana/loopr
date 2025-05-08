@@ -19,8 +19,6 @@ struct VideoListView: View {
     @State private var downloadTask: URLSessionDownloadTask? = nil
     @State private var observation: NSKeyValueObservation? = nil
     
-    // No need for sortedVideos property as we're now using explicit sections
-    
     // MARK: - Body
     
     var body: some View {
@@ -36,166 +34,43 @@ struct VideoListView: View {
             // Create a scrollable list of videos
             ScrollView {
                 LazyVStack(spacing: 20) {
-                        // Add headers and separate cached from non-cached videos
+                    // Get cached and non-cached videos
                     let cachedVideos = videos.filter { networkManager.isVideoCached(video: $0) }
                     let uncachedVideos = videos.filter { !networkManager.isVideoCached(video: $0) }
                     
-                    // Always show the cached videos section
-                    HStack {
-                        Text("Cached Videos")
-                            .font(.headline)
-                            .foregroundColor(.green)
-                            .padding(.vertical, 8)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 12)
-                    
-                    if cachedVideos.isEmpty {
-                        Text("No cached videos")
-                            .foregroundColor(.gray)
-                            .italic()
-                            .padding(.vertical, 10)
+                    // Sort cached videos by last played date (most recent first)
+                    let sortedCachedVideos = cachedVideos.sorted { (video1, video2) -> Bool in
+                        let date1 = VideoCacheManager.shared.getLastPlayed(for: video1.url) ?? .distantPast
+                        let date2 = VideoCacheManager.shared.getLastPlayed(for: video2.url) ?? .distantPast
+                        return date1 > date2
                     }
                     
-                    // Show cached videos first
-                    ForEach(cachedVideos) { video in
-                        VStack(spacing: 0) {
-                            // Create a button for each video
-                            Button {
-                                // Check if the video is cached
-                                if networkManager.isVideoCached(video: video) {
-                                    // If cached, play it immediately
-                                    onSelectVideo(video)
-                                } else {
-                                    // If not cached, start downloading
-                                    downloadVideo(video)
-                                }
-                            } label: {
-                                // Custom list item for each video
-                                VideoListItemView(video: video, networkManager: networkManager)
-                            }
-                            .buttonStyle(.card)
-                            
-                            // Show progress bar if this video is being downloaded
-                            if downloadingVideoID == video.id {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Downloading...")
-                                        .font(.caption)
-                                        .foregroundColor(.white)
-                                    
-                                    // Progress bar
-                                    GeometryReader { geometry in
-                                        ZStack(alignment: .leading) {
-                                            // Background
-                                            Rectangle()
-                                                .fill(Color.gray.opacity(0.3))
-                                                .frame(height: 8)
-                                                .cornerRadius(4)
-                                            
-                                            // Progress fill
-                                            Rectangle()
-                                                .fill(Color.blue)
-                                                .frame(width: CGFloat(downloadProgress) * geometry.size.width, height: 8)
-                                                .cornerRadius(4)
-                                        }
-                                    }
-                                    .frame(height: 8)
-                                    
-                                    // Cancel button
-                                    Button("Cancel") {
-                                        cancelDownload()
-                                    }
-                                    .font(.caption)
-                                    .foregroundColor(.red)
-                                    .padding(.top, 4)
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(Color.black.opacity(0.5))
-                                .cornerRadius(8)
-                                .padding(.horizontal, 12)
-                            }
+                    // Cached videos section
+                    if !sortedCachedVideos.isEmpty {
+                        ForEach(sortedCachedVideos) { video in
+                            VideoRow(
+                                video: video,
+                                networkManager: networkManager,
+                                downloadingVideoID: $downloadingVideoID,
+                                downloadProgress: $downloadProgress,
+                                onSelectVideo: onSelectVideo,
+                                downloadVideo: { downloadVideo(video) },
+                                cancelDownload: cancelDownload
+                            )
                         }
                     }
                     
-                    // Always show the uncached videos section
-                    
-                        HStack {
-                            Text("Other Videos")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .padding(.vertical, 8)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.top, 20)
-                    
-                    if uncachedVideos.isEmpty {
-                        Text("All videos are cached")
-                            .foregroundColor(.gray)
-                            .italic()
-                            .padding(.vertical, 10)
-                    }
-                    
-                    // Show uncached videos
+                    // Uncached videos section
                     ForEach(uncachedVideos) { video in
-                        VStack(spacing: 0) {
-                            // Create a button for each video
-                            Button {
-                                // Check if the video is cached
-                                if networkManager.isVideoCached(video: video) {
-                                    // If cached, play it immediately
-                                    onSelectVideo(video)
-                                } else {
-                                    // If not cached, start downloading
-                                    downloadVideo(video)
-                                }
-                            } label: {
-                                // Custom list item for each video
-                                VideoListItemView(video: video, networkManager: networkManager)
-                            }
-                            .buttonStyle(.card)
-                            
-                            // Show progress bar if this video is being downloaded
-                            if downloadingVideoID == video.id {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Downloading...")
-                                        .font(.caption)
-                                        .foregroundColor(.white)
-                                    
-                                    // Progress bar
-                                    GeometryReader { geometry in
-                                        ZStack(alignment: .leading) {
-                                            // Background
-                                            Rectangle()
-                                                .fill(Color.gray.opacity(0.3))
-                                                .frame(height: 8)
-                                                .cornerRadius(4)
-                                            
-                                            // Progress fill
-                                            Rectangle()
-                                                .fill(Color.blue)
-                                                .frame(width: CGFloat(downloadProgress) * geometry.size.width, height: 8)
-                                                .cornerRadius(4)
-                                        }
-                                    }
-                                    .frame(height: 8)
-                                    
-                                    // Cancel button
-                                    Button("Cancel") {
-                                        cancelDownload()
-                                    }
-                                    .font(.caption)
-                                    .foregroundColor(.red)
-                                    .padding(.top, 4)
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(Color.black.opacity(0.5))
-                                .cornerRadius(8)
-                                .padding(.horizontal, 12)
-                            }
-                        }
+                        VideoRow(
+                            video: video,
+                            networkManager: networkManager,
+                            downloadingVideoID: $downloadingVideoID,
+                            downloadProgress: $downloadProgress,
+                            onSelectVideo: onSelectVideo,
+                            downloadVideo: { downloadVideo(video) },
+                            cancelDownload: cancelDownload
+                        )
                     }
                 }
                 .padding()
@@ -277,6 +152,77 @@ struct VideoListView: View {
     }
 }
 
+// Extracted row view for reuse
+struct VideoRow: View {
+    let video: Video
+    let networkManager: NetworkManager
+    @Binding var downloadingVideoID: UUID?
+    @Binding var downloadProgress: Float
+    let onSelectVideo: (Video) -> Void
+    let downloadVideo: () -> Void
+    let cancelDownload: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Create a button for each video
+            Button {
+                // Check if the video is cached
+                if networkManager.isVideoCached(video: video) {
+                    // If cached, play it immediately
+                    onSelectVideo(video)
+                } else {
+                    // If not cached, start downloading
+                    downloadVideo()
+                }
+            } label: {
+                // Custom list item for each video
+                VideoListItemView(video: video, networkManager: networkManager)
+            }
+            .buttonStyle(.card)
+            
+            // Show progress bar if this video is being downloaded
+            if downloadingVideoID == video.id {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Downloading...")
+                        .font(.caption)
+                        .foregroundColor(.white)
+                    
+                    // Progress bar
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            // Background
+                            Rectangle()
+                                .fill(Color.gray.opacity(0.3))
+                                .frame(height: 8)
+                                .cornerRadius(4)
+                            
+                            // Progress fill
+                            Rectangle()
+                                .fill(Color.blue)
+                                .frame(width: CGFloat(downloadProgress) * geometry.size.width, height: 8)
+                                .cornerRadius(4)
+                        }
+                    }
+                    .frame(height: 8)
+                    
+                    // Cancel button
+                    Button("Cancel") {
+                        cancelDownload()
+                    }
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .padding(.top, 4)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.black.opacity(0.5))
+                .cornerRadius(8)
+                .padding(.horizontal, 12)
+            }
+        }
+    }
+}
+
 // List item view for an individual video
 struct VideoListItemView: View {
     let video: Video
@@ -340,22 +286,19 @@ struct VideoListItemView: View {
                         .foregroundColor(.white)
                         .lineLimit(1)
                     
-                    // Cache indicator - enhanced to be more visible
+                    // Cache indicator
                     if networkManager.isVideoCached(video: video) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrow.down.circle.fill")
-                                .foregroundColor(.green)
-                            
-                            Text("Cached")
-                                .font(.caption)
-                                .foregroundColor(.green)
-                                .fontWeight(.bold)
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.green.opacity(0.2))
-                        .cornerRadius(4)
+                        Image(systemName: "arrow.down.circle.fill")
+                            .foregroundColor(.green)
+                            .font(.caption)
                     }
+                }
+                
+                // Show last played date if available
+                if let lastPlayed = VideoCacheManager.shared.getLastPlayed(for: video.url) {
+                    Text("Last played: \(formatDate(lastPlayed))")
+                        .font(.caption)
+                        .foregroundColor(.gray)
                 }
                 
                 // Video description
@@ -395,5 +338,12 @@ struct VideoListItemView: View {
                 }
             }
         }.resume()
+    }
+    
+    // Format date for displaying the last played date
+    private func formatDate(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 }
