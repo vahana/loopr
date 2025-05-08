@@ -1,12 +1,3 @@
-//
-//  VideoListView.swift
-//  Loopr
-//
-//  Created by vahan on 2025-05-02.
-//
-
-
-// File: Loopr/VideoListView.swift
 import SwiftUI
 
 // List view that shows all available videos
@@ -21,6 +12,12 @@ struct VideoListView: View {
     
     // Network manager for checking cache status
     let networkManager: NetworkManager
+    
+    // Track which video is currently downloading and its progress
+    @State private var downloadingVideoID: UUID? = nil
+    @State private var downloadProgress: Float = 0.0
+    @State private var downloadTask: URLSessionDownloadTask? = nil
+    @State private var observation: NSKeyValueObservation? = nil
     
     // MARK: - Body
     
@@ -39,21 +36,141 @@ struct VideoListView: View {
                 LazyVStack(spacing: 20) {
                     // Loop through each video
                     ForEach(videos) { video in
-                        // Create a button for each video
-                        Button {
-                            // When clicked, call the onSelectVideo function
-                            onSelectVideo(video)
-                        } label: {
-                            // Custom list item for each video
-                            VideoListItemView(video: video, networkManager: networkManager)
+                        VStack(spacing: 0) {
+                            // Create a button for each video
+                            Button {
+                                // Check if the video is cached
+                                if networkManager.isVideoCached(video: video) {
+                                    // If cached, play it immediately
+                                    onSelectVideo(video)
+                                } else {
+                                    // If not cached, start downloading
+                                    downloadVideo(video)
+                                }
+                            } label: {
+                                // Custom list item for each video
+                                VideoListItemView(video: video, networkManager: networkManager)
+                            }
+                            .buttonStyle(.card)
+                            
+                            // Show progress bar if this video is being downloaded
+                            if downloadingVideoID == video.id {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Downloading...")
+                                        .font(.caption)
+                                        .foregroundColor(.white)
+                                    
+                                    // Progress bar
+                                    GeometryReader { geometry in
+                                        ZStack(alignment: .leading) {
+                                            // Background
+                                            Rectangle()
+                                                .fill(Color.gray.opacity(0.3))
+                                                .frame(height: 8)
+                                                .cornerRadius(4)
+                                            
+                                            // Progress fill
+                                            Rectangle()
+                                                .fill(Color.blue)
+                                                .frame(width: CGFloat(downloadProgress) * geometry.size.width, height: 8)
+                                                .cornerRadius(4)
+                                        }
+                                    }
+                                    .frame(height: 8)
+                                    
+                                    // Cancel button
+                                    Button("Cancel") {
+                                        cancelDownload()
+                                    }
+                                    .font(.caption)
+                                    .foregroundColor(.red)
+                                    .padding(.top, 4)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Color.black.opacity(0.5))
+                                .cornerRadius(8)
+                                .padding(.horizontal, 12)
+                            }
                         }
-                        // Use the card button style (specific to tvOS)
-                        .buttonStyle(.card)
                     }
                 }
                 .padding()
             }
         }
+        .onDisappear {
+            // Clean up when the view disappears
+            cancelDownload()
+        }
+    }
+    
+    // Function to start downloading a video
+    private func downloadVideo(_ video: Video) {
+        // Set the current downloading video
+        downloadingVideoID = video.id
+        downloadProgress = 0.0
+        
+        // Create a download task with progress tracking
+        let url = video.url
+        let request = URLRequest(url: url)
+        
+        let task = URLSession.shared.downloadTask(with: request) { localURL, response, error in
+            guard let localURL = localURL, error == nil else {
+                // Handle download error
+                DispatchQueue.main.async {
+                    self.downloadingVideoID = nil
+                }
+                return
+            }
+            
+            // Get the destination path for the cached file
+            let cachedURL = VideoCacheManager.shared.cachedFileURL(for: url)
+            
+            do {
+                // Remove existing file if necessary
+                if FileManager.default.fileExists(atPath: cachedURL.path) {
+                    try FileManager.default.removeItem(at: cachedURL)
+                }
+                
+                // Move downloaded file to cache
+                try FileManager.default.moveItem(at: localURL, to: cachedURL)
+                
+                // Play the video after download completes
+                DispatchQueue.main.async {
+                    self.downloadingVideoID = nil
+                    self.onSelectVideo(video)
+                }
+            } catch {
+                print("Error saving downloaded file: \(error)")
+                DispatchQueue.main.async {
+                    self.downloadingVideoID = nil
+                }
+            }
+        }
+        
+        // Add progress observation
+        let obs = task.progress.observe(\.fractionCompleted) { progress, _ in
+            DispatchQueue.main.async {
+                self.downloadProgress = Float(progress.fractionCompleted)
+            }
+        }
+        
+        // Store the observation and task to cancel later if needed
+        self.downloadTask = task
+        self.observation = obs
+        
+        task.resume()
+    }
+    
+    // Function to cancel current download
+    private func cancelDownload() {
+        downloadTask?.cancel()
+        observation?.invalidate()
+        downloadingVideoID = nil
+        
+        // Clear references
+        downloadTask = nil
+        observation = nil
     }
 }
 

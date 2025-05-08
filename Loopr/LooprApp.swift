@@ -15,8 +15,3 @@ struct LooprApp: App {
         }
     }
 }
-
-// In SwiftUI, this simple structure is all you need to define the app.
-// The ContentView will be loaded automatically when the app starts.
-
-
