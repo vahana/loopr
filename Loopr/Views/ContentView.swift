@@ -1,4 +1,3 @@
-// File: Loopr/ContentView.swift
 import SwiftUI
 import AVKit
 
@@ -9,6 +8,7 @@ struct ContentView: View {
     @State private var selectedVideo: Video?
     @State private var seekStepSize: Double = 5.0
     @State private var showingNetworkVideos = true
+    @State private var showingSettings = false
     
     // Add StateObject for network manager
     @StateObject private var networkManager = NetworkManager()
@@ -33,12 +33,12 @@ struct ContentView: View {
                         video: video,
                         onBack: { isShowingPlayer = false },
                         seekStepSize: seekStepSize,
-                        networkManager: networkManager  // Pass the network manager
+                        networkManager: networkManager
                     )
                 }
             } else {
                 VStack {
-                    // Header with connection status
+                    // Header with connection status and settings button
                     HStack {
                         Text("Video Library")
                             .font(.largeTitle)
@@ -64,6 +64,16 @@ struct ContentView: View {
                             networkManager.scanForServer()
                         }
                         .padding(.horizontal)
+                        
+                        // Settings button
+                        Button(action: {
+                            showingSettings = true
+                        }) {
+                            Image(systemName: "gear")
+                                .font(.title3)
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal)
                     }
                     .padding()
                     
@@ -75,7 +85,7 @@ struct ContentView: View {
                     .pickerStyle(.segmented)
                     .padding(.horizontal)
                     
-                    // Show either network or sample videos - Now using VideoListView instead of VideoGridView
+                    // Show either network or sample videos
                     VideoListView(
                         videos: showingNetworkVideos ? networkManager.videos : sampleVideos,
                         onSelectVideo: { video in
@@ -83,6 +93,9 @@ struct ContentView: View {
                             isShowingPlayer = true
                         }
                     )
+                }
+                .sheet(isPresented: $showingSettings) {
+                    SettingsView()
                 }
             }
         }

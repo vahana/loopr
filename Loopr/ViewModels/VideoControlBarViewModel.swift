@@ -149,9 +149,14 @@ class VideoControlBarViewModel: ObservableObject {
             }
         }
     }
-    
-    // Format time in seconds to MM:SS or HH:MM:SS
+        
+    // Format timer time as MM:SS
     func formatTime(_ seconds: Double) -> String {
+        // Check for invalid values
+        if seconds.isNaN || seconds.isInfinite || seconds < 0 {
+            return "00:00"
+        }
+        
         let hours = Int(seconds / 3600)
         let minutes = Int(seconds.truncatingRemainder(dividingBy: 3600) / 60)
         let secs = Int(seconds.truncatingRemainder(dividingBy: 60))
@@ -161,13 +166,6 @@ class VideoControlBarViewModel: ObservableObject {
         } else {
             return String(format: "%02d:%02d", minutes, secs)
         }
-    }
-    
-    // Format timer time as MM:SS
-    func formatTimerTime(_ seconds: Int) -> String {
-        let minutes = seconds / 60
-        let secs = seconds % 60
-        return String(format: "%02d:%02d", minutes, secs)
     }
     
     func formatLoopTimeRemaining() -> String {

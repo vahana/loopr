@@ -187,11 +187,23 @@ struct VideoPlayerView: View {
                 Task {
                     do {
                         let durationValue = try await asset.load(.duration)
-                        self.viewModel.duration = durationValue.seconds
-                        // Set initial loop end to video end
-                        self.viewModel.loopEndTime = self.viewModel.duration
+                        // Ensure duration is valid before using it
+                        let seconds = durationValue.seconds
+                        if seconds.isFinite && !seconds.isNaN && seconds > 0 {
+                            self.viewModel.duration = seconds
+                            // Set initial loop end to video end
+                            self.viewModel.loopEndTime = seconds
+                        } else {
+                            // Set a default duration if the actual one is invalid
+                            self.viewModel.duration = 0
+                            self.viewModel.loopEndTime = 0
+                            print("Warning: Invalid duration value: \(seconds)")
+                        }
                     } catch {
                         print("Failed to load duration: \(error)")
+                        // Set default values on error
+                        self.viewModel.duration = 0
+                        self.viewModel.loopEndTime = 0
                     }
                 }
             }

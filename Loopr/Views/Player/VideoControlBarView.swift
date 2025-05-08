@@ -135,7 +135,8 @@ struct VideoControlBarView: View {
             // TIMER CONTROLS
             HStack(spacing: 10) {
                 // Timer display
-                Text(viewModel.formatTimerTime(viewModel.timerSeconds))
+                // Fix: Direct access to timerSeconds and format it locally
+                Text(formatTimerTime(viewModel.timerSeconds))
                     .font(.caption)
                     .foregroundColor(viewModel.isTimerRunning ? .yellow : .gray)
                     .frame(minWidth: 70)
@@ -168,5 +169,12 @@ struct VideoControlBarView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Color.black.opacity(0.8))
+    }
+    
+    // Fix: Add the formatting function directly to the view
+    private func formatTimerTime(_ seconds: Int) -> String {
+        let minutes = seconds / 60
+        let secs = seconds % 60
+        return String(format: "%02d:%02d", minutes, secs)
     }
 }
