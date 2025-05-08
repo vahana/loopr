@@ -19,6 +19,8 @@ struct VideoListView: View {
     @State private var downloadTask: URLSessionDownloadTask? = nil
     @State private var observation: NSKeyValueObservation? = nil
     
+    // No need for sortedVideos property as we're now using explicit sections
+    
     // MARK: - Body
     
     var body: some View {
@@ -34,8 +36,109 @@ struct VideoListView: View {
             // Create a scrollable list of videos
             ScrollView {
                 LazyVStack(spacing: 20) {
-                    // Loop through each video
-                    ForEach(videos) { video in
+                        // Add headers and separate cached from non-cached videos
+                    let cachedVideos = videos.filter { networkManager.isVideoCached(video: $0) }
+                    let uncachedVideos = videos.filter { !networkManager.isVideoCached(video: $0) }
+                    
+                    // Always show the cached videos section
+                    HStack {
+                        Text("Cached Videos")
+                            .font(.headline)
+                            .foregroundColor(.green)
+                            .padding(.vertical, 8)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    
+                    if cachedVideos.isEmpty {
+                        Text("No cached videos")
+                            .foregroundColor(.gray)
+                            .italic()
+                            .padding(.vertical, 10)
+                    }
+                    
+                    // Show cached videos first
+                    ForEach(cachedVideos) { video in
+                        VStack(spacing: 0) {
+                            // Create a button for each video
+                            Button {
+                                // Check if the video is cached
+                                if networkManager.isVideoCached(video: video) {
+                                    // If cached, play it immediately
+                                    onSelectVideo(video)
+                                } else {
+                                    // If not cached, start downloading
+                                    downloadVideo(video)
+                                }
+                            } label: {
+                                // Custom list item for each video
+                                VideoListItemView(video: video, networkManager: networkManager)
+                            }
+                            .buttonStyle(.card)
+                            
+                            // Show progress bar if this video is being downloaded
+                            if downloadingVideoID == video.id {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Downloading...")
+                                        .font(.caption)
+                                        .foregroundColor(.white)
+                                    
+                                    // Progress bar
+                                    GeometryReader { geometry in
+                                        ZStack(alignment: .leading) {
+                                            // Background
+                                            Rectangle()
+                                                .fill(Color.gray.opacity(0.3))
+                                                .frame(height: 8)
+                                                .cornerRadius(4)
+                                            
+                                            // Progress fill
+                                            Rectangle()
+                                                .fill(Color.blue)
+                                                .frame(width: CGFloat(downloadProgress) * geometry.size.width, height: 8)
+                                                .cornerRadius(4)
+                                        }
+                                    }
+                                    .frame(height: 8)
+                                    
+                                    // Cancel button
+                                    Button("Cancel") {
+                                        cancelDownload()
+                                    }
+                                    .font(.caption)
+                                    .foregroundColor(.red)
+                                    .padding(.top, 4)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Color.black.opacity(0.5))
+                                .cornerRadius(8)
+                                .padding(.horizontal, 12)
+                            }
+                        }
+                    }
+                    
+                    // Always show the uncached videos section
+                    
+                        HStack {
+                            Text("Other Videos")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .padding(.vertical, 8)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.top, 20)
+                    
+                    if uncachedVideos.isEmpty {
+                        Text("All videos are cached")
+                            .foregroundColor(.gray)
+                            .italic()
+                            .padding(.vertical, 10)
+                    }
+                    
+                    // Show uncached videos
+                    ForEach(uncachedVideos) { video in
                         VStack(spacing: 0) {
                             // Create a button for each video
                             Button {
@@ -237,11 +340,21 @@ struct VideoListItemView: View {
                         .foregroundColor(.white)
                         .lineLimit(1)
                     
-                    // Cache indicator
+                    // Cache indicator - enhanced to be more visible
                     if networkManager.isVideoCached(video: video) {
-                        Image(systemName: "arrow.down.circle.fill")
-                            .foregroundColor(.green)
-                            .font(.caption)
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .foregroundColor(.green)
+                            
+                            Text("Cached")
+                                .font(.caption)
+                                .foregroundColor(.green)
+                                .fontWeight(.bold)
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.green.opacity(0.2))
+                        .cornerRadius(4)
                     }
                 }
                 
