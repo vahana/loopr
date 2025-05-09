@@ -25,6 +25,11 @@ class VideoControlBarViewModel: ObservableObject {
     @Published var loopTimerActive: Bool = false
     @Published var loopTimeRemaining: Double = 30.0 // 30 seconds default
     
+    private var lastSeekDirection: SeekDirection = .none
+    private var lastSeekTime: Date = Date.distantPast
+    private var consecutiveSeekCount: Int = 0
+
+    
     // Reference to player
     var player: AVPlayer
     
@@ -34,6 +39,11 @@ class VideoControlBarViewModel: ObservableObject {
     }
     
     // MARK: - Control Methods
+    
+    // Define seek direction enum
+    private enum SeekDirection {
+        case forward, backward, none
+    }
     
     // Toggle play/pause
     func togglePlayPause() {
@@ -89,14 +99,50 @@ class VideoControlBarViewModel: ObservableObject {
     }
     // Seek backward by configurable step size
     func seekBackward() {
-        let newTime = max(0, currentTime - seekStepSize)
+        let now = Date()
+        let timeInterval = now.timeIntervalSince(lastSeekTime)
+        
+        // Check if this is a consecutive click (within 0.8 seconds)
+        if timeInterval < 1 && lastSeekDirection == .backward {
+            consecutiveSeekCount += 1
+        } else {
+            consecutiveSeekCount = 0
+        }
+        
+        // Calculate dynamic seek amount based on consecutive clicks
+        let seekAmount = calculateProgressiveSeekAmount(clicks: consecutiveSeekCount)
+        
+        // Perform the seek
+        let newTime = max(0, currentTime - seekAmount)
         seekToTime(newTime)
+        
+        // Update tracking state
+        lastSeekDirection = .backward
+        lastSeekTime = now
     }
     
     // Seek forward by configurable step size
     func seekForward() {
-        let newTime = min(duration, currentTime + seekStepSize)
+        let now = Date()
+        let timeInterval = now.timeIntervalSince(lastSeekTime)
+        
+        // Check if this is a consecutive click (within 0.8 seconds)
+        if timeInterval < 1 && lastSeekDirection == .forward {
+            consecutiveSeekCount += 1
+        } else {
+            consecutiveSeekCount = 0
+        }
+        
+        // Calculate dynamic seek amount based on consecutive clicks
+        let seekAmount = calculateProgressiveSeekAmount(clicks: consecutiveSeekCount)
+        
+        // Perform the seek
+        let newTime = min(duration, currentTime + seekAmount)
         seekToTime(newTime)
+        
+        // Update tracking state
+        lastSeekDirection = .forward
+        lastSeekTime = now
     }
     
     // Seek to a specific time
@@ -170,6 +216,14 @@ class VideoControlBarViewModel: ObservableObject {
     
     func formatLoopTimeRemaining() -> String {
         return "\(Int(loopTimeRemaining))s"
+    }
+    
+    private func calculateProgressiveSeekAmount(clicks: Int) -> Double {
+        switch clicks {
+        case 0:  return 2.0  // First click: 2 seconds
+        case 1:  return 5.0  // Second click: 5 seconds
+        default:  return 10.0 // Third click: 10 seconds
+        }
     }
 }
 
