@@ -65,35 +65,52 @@ struct VideoControlBarView: View {
             
             // Loop controls
             HStack(spacing: 8) {
-                // Set Start button
+                // Add Mark button
                 Button {
-                    viewModel.setLoopStart()
+                    viewModel.addMark()
                 } label: {
                     VStack(spacing: 4) {
-                        Image(systemName: "arrow.left.to.line")
+                        Image(systemName: "bookmark.fill")
                             .font(.system(size: 20))
                     }
                     .frame(width: 40, height: 40)
-                    .background(focusedControl == .loopStart ? Color.blue : Color.black.opacity(0.7))
+                    .background(focusedControl == .addMark ? Color.blue : Color.black.opacity(0.7))
                     .cornerRadius(6)
                 }
                 .buttonStyle(.card)
-                .focused($focusedControl, equals: .loopStart)
+                .focused($focusedControl, equals: .addMark)
                 
-                // Set End button
+                // Previous Segment button
                 Button {
-                    viewModel.setLoopEnd()
+                    viewModel.previousSegment()
                 } label: {
                     VStack(spacing: 4) {
-                        Image(systemName: "arrow.right.to.line")
+                        Image(systemName: "chevron.left")
                             .font(.system(size: 20))
                     }
                     .frame(width: 40, height: 40)
-                    .background(focusedControl == .loopEnd ? Color.blue : Color.black.opacity(0.7))
+                    .background(focusedControl == .previousSegment ? Color.blue : Color.black.opacity(0.7))
                     .cornerRadius(6)
                 }
                 .buttonStyle(.card)
-                .focused($focusedControl, equals: .loopEnd)
+                .focused($focusedControl, equals: .previousSegment)
+                .disabled(viewModel.loopMarks.count < 2)
+                
+                // Next Segment button
+                Button {
+                    viewModel.nextSegment()
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 20))
+                    }
+                    .frame(width: 40, height: 40)
+                    .background(focusedControl == .nextSegment ? Color.blue : Color.black.opacity(0.7))
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.card)
+                .focused($focusedControl, equals: .nextSegment)
+                .disabled(viewModel.loopMarks.count < 2)
                 
                 // Toggle Loop button
                 Button {
@@ -113,11 +130,16 @@ struct VideoControlBarView: View {
                 }
                 .buttonStyle(.card)
                 .focused($focusedControl, equals: .toggleLoop)
+                .disabled(viewModel.loopMarks.count < 2)
             }
             
             // Loop indicators (when active)
             if viewModel.isLooping {
                 HStack(spacing: 4) {
+                    Text(viewModel.formatCurrentSegment())
+                        .font(.caption)
+                        .foregroundColor(.white)
+                    
                     if viewModel.loopTimerActive {
                         Text("(\(viewModel.formatLoopTimeRemaining()))")
                             .font(.caption)

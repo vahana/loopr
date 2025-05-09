@@ -127,15 +127,23 @@ struct VideoPlayerView: View {
             }
             return .ignored
         }
-        .onKeyPress("1") {
-            viewModel.setLoopStart()
+        .onKeyPress("m") {
+            viewModel.addMark()
             return .handled
         }
-        .onKeyPress("2") {
-            viewModel.setLoopEnd()
+        .onKeyPress("d") {
+            viewModel.removeMark()
             return .handled
         }
-        .onKeyPress("3") {
+        .onKeyPress("[") {
+            viewModel.previousSegment()
+            return .handled
+        }
+        .onKeyPress("]") {
+            viewModel.nextSegment()
+            return .handled
+        }
+        .onKeyPress("l") {
             viewModel.toggleLoop()
             return .handled
         }
@@ -194,19 +202,19 @@ struct VideoPlayerView: View {
                         let seconds = durationValue.seconds
                         if seconds.isFinite && !seconds.isNaN && seconds > 0 {
                             self.viewModel.duration = seconds
-                            // Set initial loop end to video end
-                            self.viewModel.loopEndTime = seconds
+                            // Add a mark at the end of the video for convenience
+                            if self.viewModel.loopMarks.isEmpty {
+                                self.viewModel.loopMarks = [0, seconds]
+                            }
                         } else {
                             // Set a default duration if the actual one is invalid
                             self.viewModel.duration = 0
-                            self.viewModel.loopEndTime = 0
                             print("Warning: Invalid duration value: \(seconds)")
                         }
                     } catch {
                         print("Failed to load duration: \(error)")
                         // Set default values on error
                         self.viewModel.duration = 0
-                        self.viewModel.loopEndTime = 0
                     }
                 }
             }
