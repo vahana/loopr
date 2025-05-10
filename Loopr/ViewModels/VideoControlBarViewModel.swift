@@ -307,7 +307,7 @@ class VideoControlBarViewModel: ObservableObject {
         let timeInterval = now.timeIntervalSince(lastSeekTime)
         
         // Check if this is a consecutive click (within 0.8 seconds)
-        if timeInterval < 0.3 && lastSeekDirection == .backward {
+        if timeInterval < 0.4 && lastSeekDirection == .backward {
             consecutiveSeekCount += 1
         } else {
             consecutiveSeekCount = 0
@@ -345,7 +345,7 @@ class VideoControlBarViewModel: ObservableObject {
         let timeInterval = now.timeIntervalSince(lastSeekTime)
         
         // Check if this is a consecutive click (within 0.8 seconds)
-        if timeInterval < 0.3 && lastSeekDirection == .forward {
+        if timeInterval < 0.4 && lastSeekDirection == .forward {
             consecutiveSeekCount += 1
         } else {
             consecutiveSeekCount = 0

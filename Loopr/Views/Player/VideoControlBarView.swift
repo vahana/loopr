@@ -15,7 +15,7 @@ struct VideoControlBarView: View {
     // Track double tap timing
     @State private var lastBackwardTapTime: Date? = nil
     @State private var lastForwardTapTime: Date? = nil
-    @State private var doubleTapThreshold: TimeInterval = 0.3
+    @State private var doubleTapThreshold: TimeInterval = 0.2
     
     var body: some View {
         HStack(spacing: 12) {
