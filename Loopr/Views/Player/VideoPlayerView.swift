@@ -109,6 +109,11 @@ struct VideoPlayerView: View {
         .onDisappear {
             // When the view disappears, pause the player
             player.pause()
+            
+            // Save the current position
+            if viewModel.currentTime > 0 {
+                VideoPositionManager.shared.savePosition(viewModel.currentTime, for: video.url)
+            }
         }
         // Update player state on timer
         .onReceive(timer) { _ in
@@ -177,6 +182,11 @@ struct VideoPlayerView: View {
     
     // Handle menu button press with special behavior for looping
     private func handleMenuButtonPress() {
+        // Save the current position before going back
+        if viewModel.currentTime > 0 {
+            VideoPositionManager.shared.savePosition(viewModel.currentTime, for: video.url)
+        }
+        
         // If looping is active, first press turns it off
         if viewModel.isLooping {
             // Check if this is a double-press (within 1 second)
@@ -195,7 +205,6 @@ struct VideoPlayerView: View {
             onBack()
         }
     }
-    
     // MARK: - Setup Methods
     
     // Set up the player initially
@@ -221,6 +230,19 @@ struct VideoPlayerView: View {
                             if self.viewModel.loopMarks.isEmpty {
                                 // Add default marks at start and end of video
                                 self.viewModel.loopMarks = [0, seconds]
+                            }
+                            
+                            // Restore previous position if available
+                            if let savedPosition = VideoPositionManager.shared.getPosition(for: self.video.url) {
+                                // Make sure saved position is within valid range and at least 10 seconds before the end
+                                if savedPosition > 0 && savedPosition < (seconds - 10) {
+                                    // Seek to the saved position
+                                    await self.player.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600))
+                                    self.viewModel.currentTime = savedPosition
+                                    
+                                    // Show a notification that we've restored position
+                                    print("Restored video position to \(self.viewModel.formatTime(savedPosition))")
+                                }
                             }
                         } else {
                             // Set a default duration if the actual one is invalid

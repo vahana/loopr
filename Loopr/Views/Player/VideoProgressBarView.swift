@@ -44,12 +44,27 @@ struct VideoProgressBarView: View {
                                                      (index == viewModel.currentSegmentIndex ||
                                                       index == viewModel.currentSegmentIndex + 1)
                         
-                        Rectangle()
-                            .fill(isActiveSegmentBoundary ? Color.yellow : Color.white)
-                            .frame(width: 2, height: 16)
-                            .position(x: CGFloat(mark / max(viewModel.duration, 1)) * geometry.size.width, y: 4)
+                        VStack(spacing: 0) {
+                            // Segment number (shown above mark between segments)
+                            if index < viewModel.loopMarks.count - 1 {
+                                Text("\(index + 1)")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(
+                                        viewModel.isLooping && index == viewModel.currentSegmentIndex
+                                            ? Color.yellow
+                                            : Color.white
+                                    )
+                                    .padding(.bottom, 2)
+                                    .offset(x: 8) // Offset to center between marks
+                            }
+                            
+                            // Mark indicator
+                            Rectangle()
+                                .fill(isActiveSegmentBoundary ? Color.yellow : Color.white)
+                                .frame(width: 2, height: 16)
+                        }
+                        .position(x: CGFloat(mark / max(viewModel.duration, 1)) * geometry.size.width, y: 4)
                     }
-                    
                     // Current position marker
                     Circle()
                         .fill(Color.white)
