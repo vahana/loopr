@@ -278,6 +278,11 @@ struct VideoControlBarView: View {
             if newValue {
                 // When entering mark adjustment mode, ensure we're on a mark
                 viewModel.moveToNearestMark()
+                
+                // Move focus to the backward button for immediate adjustment
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    focusedControl = .seekBackward
+                }
             }
         }
     }
