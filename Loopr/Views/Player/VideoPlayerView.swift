@@ -101,9 +101,9 @@ struct VideoPlayerView: View {
             // Record that this video was played
             VideoCacheManager.shared.updateLastPlayed(for: video.url)
             
-            // Set initial focus to play button
+            // Set initial focus to seek forward button
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                focusedControl = .play
+                focusedControl = .seekForward
             }
         }
         .onDisappear {

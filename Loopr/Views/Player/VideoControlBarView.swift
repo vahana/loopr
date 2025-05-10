@@ -9,25 +9,13 @@ struct VideoControlBarView: View {
     // Focus state
     @FocusState var focusedControl: VideoControlFocus?
     
+    // State for confirmation dialog
+    @State private var showClearMarksConfirmation = false
+    
     var body: some View {
         HStack(spacing: 12) {
             // Transport controls (main row)
             HStack(spacing: 12) {
-                // Play/Pause button
-                Button {
-                    viewModel.togglePlayPause()
-                } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 20))
-                    }
-                    .frame(width: 50, height: 40)
-                    .background(focusedControl == .play ? Color.blue : Color.black.opacity(0.7))
-                    .cornerRadius(6)
-                }
-                .buttonStyle(.card)
-                .focused($focusedControl, equals: .play)
-
                 // Rewind button
                 Button {
                     viewModel.seekBackward()
@@ -131,22 +119,6 @@ struct VideoControlBarView: View {
                 .buttonStyle(.card)
                 .focused($focusedControl, equals: .toggleLoop)
                 .disabled(viewModel.loopMarks.count < 2)
-                
-                // Clear Marks button
-                Button {
-                    viewModel.clearMarks()
-                } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "xmark.circle")
-                            .font(.system(size: 20))
-                    }
-                    .frame(width: 40, height: 40)
-                    .background(focusedControl == .clearMarks ? Color.blue : Color.black.opacity(0.7))
-                    .cornerRadius(6)
-                }
-                .buttonStyle(.card)
-                .focused($focusedControl, equals: .clearMarks)
-                .disabled(viewModel.loopMarks.isEmpty)
             }
             
             // Loop indicators (when active)
@@ -201,12 +173,38 @@ struct VideoControlBarView: View {
                 }
                 .buttonStyle(.card)
                 .focused($focusedControl, equals: .startTimer)
+                
+                // Clear Marks button (moved to right side)
+                Button {
+                    // Show confirmation dialog instead of immediately clearing
+                    showClearMarksConfirmation = true
+                } label: {
+                    Text("Clear All Marks")
+                        .font(.system(size: 16))
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .frame(height: 40)
+                        .background(focusedControl == .clearMarks ? Color.blue : Color.black.opacity(0.7))
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.card)
+                .focused($focusedControl, equals: .clearMarks)
+                .disabled(viewModel.loopMarks.isEmpty)
             }
             .padding(.horizontal, 6)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Color.black.opacity(0.8))
+        .alert("Clear All Marks", isPresented: $showClearMarksConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Clear All", role: .destructive) {
+                viewModel.clearMarks()
+            }
+        } message: {
+            Text("Are you sure you want to clear all marks? This action cannot be undone.")
+        }
     }
     
     // Fix: Add the formatting function directly to the view

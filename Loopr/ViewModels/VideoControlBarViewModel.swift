@@ -476,7 +476,7 @@ class VideoControlBarViewModel: ObservableObject {
 
 // Focus state enum (important for tvOS navigation)
 enum VideoControlFocus: Int {
-    case seekBackward, play, seekForward
-    case addMark, previousSegment, nextSegment, toggleLoop, clearMarks
-    case startTimer
+    case seekBackward, seekForward
+    case addMark, previousSegment, nextSegment, toggleLoop
+    case startTimer, clearMarks
 }
