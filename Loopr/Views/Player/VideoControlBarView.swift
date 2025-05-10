@@ -123,8 +123,19 @@ struct VideoControlBarView: View {
             HStack(spacing: 8) {
                 // Add Mark button
                 Button {
-                    if !isInMarkAdjustmentMode {
-                        viewModel.addMark()
+                    if isInMarkAdjustmentMode {
+                        // If already in adjustment mode, exit it
+                        isInMarkAdjustmentMode = false
+                    } else {
+                        // Check if we're exactly on a mark
+                        if viewModel.isOnExistingMark() {
+                            // If we're on a mark, remove it
+                            viewModel.removeMark()
+                        } else {
+                            // Add a mark and enter adjustment mode
+                            viewModel.addMark()
+                            isInMarkAdjustmentMode = true
+                        }
                     }
                 } label: {
                     VStack(spacing: 4) {
@@ -146,12 +157,6 @@ struct VideoControlBarView: View {
                 }
                 .buttonStyle(.card)
                 .focused($focusedControl, equals: .addMark)
-                .simultaneousGesture(
-                    LongPressGesture(minimumDuration: 0.5)
-                        .onEnded { _ in
-                            toggleMarkAdjustmentMode()
-                        }
-                )
                 
                 // Toggle Loop button
                 Button {
@@ -282,15 +287,5 @@ struct VideoControlBarView: View {
         let minutes = seconds / 60
         let secs = seconds % 60
         return String(format: "%02d:%02d", minutes, secs)
-    }
-    
-    // Toggle mark adjustment mode
-    private func toggleMarkAdjustmentMode() {
-        // Only allow entering mark adjustment mode if there are marks
-        if !isInMarkAdjustmentMode && viewModel.loopMarks.isEmpty {
-            return
-        }
-        
-        isInMarkAdjustmentMode.toggle()
     }
 }

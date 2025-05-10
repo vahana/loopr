@@ -135,6 +135,7 @@ class VideoControlBarViewModel: ObservableObject {
     
     // MARK: - Loop Controls
     
+    // Add a mark at the current position
     func addMark() {
         // Round to 2 decimal places for precision
         let roundedTime = (currentTime * 100).rounded() / 100
@@ -420,6 +421,15 @@ class VideoControlBarViewModel: ObservableObject {
     
     // MARK: - Mark Adjustment Features
     
+    // Check if the current position is exactly on an existing mark
+    func isOnExistingMark() -> Bool {
+        // Round to 2 decimal places for precision
+        let roundedTime = (currentTime * 100).rounded() / 100
+        
+        // Check if a mark exists at this time
+        return loopMarks.contains(where: { abs($0 - roundedTime) < 0.1 })
+    }
+    
     // Adjust the current mark backward by specified seconds
     func adjustCurrentMarkBackward(by seconds: Double) {
         // Find the closest mark to current time
@@ -473,7 +483,7 @@ class VideoControlBarViewModel: ObservableObject {
     }
     
     // Find the mark closest to the current time
-    private func findClosestMark() -> (Int, Double)? {
+    func findClosestMark() -> (Int, Double)? {
         guard !loopMarks.isEmpty else { return nil }
         
         var closestIndex = 0
@@ -491,7 +501,21 @@ class VideoControlBarViewModel: ObservableObject {
     }
     
     // Move to the nearest mark (used when entering mark adjustment mode)
+    // We'll use this after adding a mark too, so it should find the exact match first
     func moveToNearestMark() {
+        // First check if we're exactly on a mark already (which happens when we just added one)
+        let roundedTime = (currentTime * 100).rounded() / 100
+        
+        // Try to find an exact match first (for newly added marks)
+        if let exactIndex = loopMarks.firstIndex(where: { abs($0 - roundedTime) < 0.01 }) {
+            // We're already on a mark, just ensure the player is exactly at that position
+            let markTime = loopMarks[exactIndex]
+            player.seek(to: CMTime(seconds: markTime, preferredTimescale: 600))
+            currentTime = markTime
+            return
+        }
+        
+        // Otherwise, find the closest mark
         if let (index, _) = findClosestMark() {
             let markTime = loopMarks[index]
             player.seek(to: CMTime(seconds: markTime, preferredTimescale: 600))
