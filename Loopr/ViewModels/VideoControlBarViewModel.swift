@@ -275,7 +275,7 @@ class VideoControlBarViewModel: ObservableObject {
         let timeInterval = now.timeIntervalSince(lastSeekTime)
         
         // Check if this is a consecutive click (within 0.8 seconds)
-        if timeInterval < 1 && lastSeekDirection == .backward {
+        if timeInterval < 0.3 && lastSeekDirection == .backward {
             consecutiveSeekCount += 1
         } else {
             consecutiveSeekCount = 0
@@ -313,7 +313,7 @@ class VideoControlBarViewModel: ObservableObject {
         let timeInterval = now.timeIntervalSince(lastSeekTime)
         
         // Check if this is a consecutive click (within 0.8 seconds)
-        if timeInterval < 1 && lastSeekDirection == .forward {
+        if timeInterval < 0.3 && lastSeekDirection == .forward {
             consecutiveSeekCount += 1
         } else {
             consecutiveSeekCount = 0
@@ -467,7 +467,7 @@ class VideoControlBarViewModel: ObservableObject {
     
     private func calculateProgressiveSeekAmount(clicks: Int) -> Double {
         switch clicks {
-        case 0:  return 2.0  // First click: 2 seconds
+        case 0:  return 1.0  // First click: 2 seconds
         case 1:  return 5.0  // Second click: 5 seconds
         default:  return 10.0 // Third click: 10 seconds
         }
