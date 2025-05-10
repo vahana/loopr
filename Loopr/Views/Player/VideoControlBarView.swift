@@ -17,29 +17,42 @@ struct VideoControlBarView: View {
     @State private var lastForwardTapTime: Date? = nil
     @State private var doubleTapThreshold: TimeInterval = 0.2
     
+    // Mark adjustment mode
+    @State private var isInMarkAdjustmentMode = false
+    
     var body: some View {
         HStack(spacing: 12) {
             // Transport controls (main row)
             HStack(spacing: 12) {
                 // Rewind button
                 Button {
-                    // Check for double tap
-                    if let lastTap = lastBackwardTapTime,
-                       Date().timeIntervalSince(lastTap) < doubleTapThreshold {
-                        // Double tap detected - jump to previous mark
-                        viewModel.jumpToPreviousMark()
-                        // Reset timing
-                        lastBackwardTapTime = nil
+                    if isInMarkAdjustmentMode {
+                        // In mark adjustment mode, move current mark backward by 1 second
+                        viewModel.adjustCurrentMarkBackward(by: 1.0)
                     } else {
-                        // Normal seek
-                        viewModel.seekBackward()
-                        // Record tap time
-                        lastBackwardTapTime = Date()
+                        // Check for double tap
+                        if let lastTap = lastBackwardTapTime,
+                           Date().timeIntervalSince(lastTap) < doubleTapThreshold {
+                            // Double tap detected - jump to previous mark
+                            viewModel.jumpToPreviousMark()
+                            // Reset timing
+                            lastBackwardTapTime = nil
+                        } else {
+                            // Normal seek
+                            viewModel.seekBackward()
+                            // Record tap time
+                            lastBackwardTapTime = Date()
+                        }
                     }
                 } label: {
                     VStack(spacing: 4) {
                         Image(systemName: "backward.fill")
                             .font(.system(size: 20))
+                        if isInMarkAdjustmentMode {
+                            Text("-1s")
+                                .font(.system(size: 10))
+                                .foregroundColor(.yellow)
+                        }
                     }
                     .frame(width: 50, height: 40)
                     .background(focusedControl == .seekBackward ? Color.blue : Color.black.opacity(0.7))
@@ -50,29 +63,41 @@ struct VideoControlBarView: View {
                 .simultaneousGesture(
                     LongPressGesture(minimumDuration: 0.5)
                         .onEnded { _ in
-                            viewModel.seekLargeBackward()
+                            if !isInMarkAdjustmentMode {
+                                viewModel.seekLargeBackward()
+                            }
                         }
                 )
                                 
                 // Fast-forward button
                 Button {
-                    // Check for double tap
-                    if let lastTap = lastForwardTapTime,
-                       Date().timeIntervalSince(lastTap) < doubleTapThreshold {
-                        // Double tap detected - jump to next mark
-                        viewModel.jumpToNextMark()
-                        // Reset timing
-                        lastForwardTapTime = nil
+                    if isInMarkAdjustmentMode {
+                        // In mark adjustment mode, move current mark forward by 1 second
+                        viewModel.adjustCurrentMarkForward(by: 1.0)
                     } else {
-                        // Normal seek
-                        viewModel.seekForward()
-                        // Record tap time
-                        lastForwardTapTime = Date()
+                        // Check for double tap
+                        if let lastTap = lastForwardTapTime,
+                           Date().timeIntervalSince(lastTap) < doubleTapThreshold {
+                            // Double tap detected - jump to next mark
+                            viewModel.jumpToNextMark()
+                            // Reset timing
+                            lastForwardTapTime = nil
+                        } else {
+                            // Normal seek
+                            viewModel.seekForward()
+                            // Record tap time
+                            lastForwardTapTime = Date()
+                        }
                     }
                 } label: {
                     VStack(spacing: 4) {
                         Image(systemName: "forward.fill")
                             .font(.system(size: 16))
+                        if isInMarkAdjustmentMode {
+                            Text("+1s")
+                                .font(.system(size: 10))
+                                .foregroundColor(.yellow)
+                        }
                     }
                     .frame(width: 50, height: 40)
                     .background(focusedControl == .seekForward ? Color.blue : Color.black.opacity(0.7))
@@ -83,7 +108,9 @@ struct VideoControlBarView: View {
                 .simultaneousGesture(
                     LongPressGesture(minimumDuration: 0.5)
                         .onEnded { _ in
-                            viewModel.seekLargeForward()
+                            if !isInMarkAdjustmentMode {
+                                viewModel.seekLargeForward()
+                            }
                         }
                 )
             }
@@ -96,18 +123,35 @@ struct VideoControlBarView: View {
             HStack(spacing: 8) {
                 // Add Mark button
                 Button {
-                    viewModel.addMark()
+                    if !isInMarkAdjustmentMode {
+                        viewModel.addMark()
+                    }
                 } label: {
                     VStack(spacing: 4) {
-                        Image(systemName: "bookmark.fill")
+                        Image(systemName: isInMarkAdjustmentMode ? "bookmark.circle.fill" : "bookmark.fill")
                             .font(.system(size: 20))
+                        if isInMarkAdjustmentMode {
+                            Text("Adjusting")
+                                .font(.system(size: 9))
+                                .foregroundColor(.yellow)
+                        }
                     }
                     .frame(width: 40, height: 40)
-                    .background(focusedControl == .addMark ? Color.blue : Color.black.opacity(0.7))
+                    .background(
+                        focusedControl == .addMark
+                        ? Color.blue
+                        : (isInMarkAdjustmentMode ? Color.orange.opacity(0.7) : Color.black.opacity(0.7))
+                    )
                     .cornerRadius(6)
                 }
                 .buttonStyle(.card)
                 .focused($focusedControl, equals: .addMark)
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.5)
+                        .onEnded { _ in
+                            toggleMarkAdjustmentMode()
+                        }
+                )
                 
                 // Toggle Loop button
                 Button {
@@ -147,6 +191,17 @@ struct VideoControlBarView: View {
                 .padding(.vertical, 3)
                 .background(Color.black.opacity(0.5))
                 .cornerRadius(4)
+            }
+            
+            // Mark adjustment mode indicator
+            if isInMarkAdjustmentMode {
+                Text("Mark Adjustment Mode")
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color.black.opacity(0.5))
+                    .cornerRadius(4)
             }
             
             Spacer()
@@ -214,6 +269,12 @@ struct VideoControlBarView: View {
         } message: {
             Text("Are you sure you want to clear all marks? This action cannot be undone.")
         }
+        .onChange(of: isInMarkAdjustmentMode) { newValue in
+            if newValue {
+                // When entering mark adjustment mode, ensure we're on a mark
+                viewModel.moveToNearestMark()
+            }
+        }
     }
     
     // Fix: Add the formatting function directly to the view
@@ -221,5 +282,15 @@ struct VideoControlBarView: View {
         let minutes = seconds / 60
         let secs = seconds % 60
         return String(format: "%02d:%02d", minutes, secs)
+    }
+    
+    // Toggle mark adjustment mode
+    private func toggleMarkAdjustmentMode() {
+        // Only allow entering mark adjustment mode if there are marks
+        if !isInMarkAdjustmentMode && viewModel.loopMarks.isEmpty {
+            return
+        }
+        
+        isInMarkAdjustmentMode.toggle()
     }
 }
