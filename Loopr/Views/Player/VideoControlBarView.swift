@@ -12,13 +12,30 @@ struct VideoControlBarView: View {
     // State for confirmation dialog
     @State private var showClearMarksConfirmation = false
     
+    // Track double tap timing
+    @State private var lastBackwardTapTime: Date? = nil
+    @State private var lastForwardTapTime: Date? = nil
+    @State private var doubleTapThreshold: TimeInterval = 0.3
+    
     var body: some View {
         HStack(spacing: 12) {
             // Transport controls (main row)
             HStack(spacing: 12) {
                 // Rewind button
                 Button {
-                    viewModel.seekBackward()
+                    // Check for double tap
+                    if let lastTap = lastBackwardTapTime,
+                       Date().timeIntervalSince(lastTap) < doubleTapThreshold {
+                        // Double tap detected - jump to previous mark
+                        viewModel.jumpToPreviousMark()
+                        // Reset timing
+                        lastBackwardTapTime = nil
+                    } else {
+                        // Normal seek
+                        viewModel.seekBackward()
+                        // Record tap time
+                        lastBackwardTapTime = Date()
+                    }
                 } label: {
                     VStack(spacing: 4) {
                         Image(systemName: "backward.fill")
@@ -30,10 +47,28 @@ struct VideoControlBarView: View {
                 }
                 .buttonStyle(.card)
                 .focused($focusedControl, equals: .seekBackward)
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.5)
+                        .onEnded { _ in
+                            viewModel.seekLargeBackward()
+                        }
+                )
                                 
                 // Fast-forward button
                 Button {
-                    viewModel.seekForward()
+                    // Check for double tap
+                    if let lastTap = lastForwardTapTime,
+                       Date().timeIntervalSince(lastTap) < doubleTapThreshold {
+                        // Double tap detected - jump to next mark
+                        viewModel.jumpToNextMark()
+                        // Reset timing
+                        lastForwardTapTime = nil
+                    } else {
+                        // Normal seek
+                        viewModel.seekForward()
+                        // Record tap time
+                        lastForwardTapTime = Date()
+                    }
                 } label: {
                     VStack(spacing: 4) {
                         Image(systemName: "forward.fill")
@@ -45,6 +80,12 @@ struct VideoControlBarView: View {
                 }
                 .buttonStyle(.card)
                 .focused($focusedControl, equals: .seekForward)
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.5)
+                        .onEnded { _ in
+                            viewModel.seekLargeForward()
+                        }
+                )
             }
                         
             // Separator
@@ -67,38 +108,6 @@ struct VideoControlBarView: View {
                 }
                 .buttonStyle(.card)
                 .focused($focusedControl, equals: .addMark)
-                
-                // Previous Segment button
-                Button {
-                    viewModel.previousSegment()
-                } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 20))
-                    }
-                    .frame(width: 40, height: 40)
-                    .background(focusedControl == .previousSegment ? Color.blue : Color.black.opacity(0.7))
-                    .cornerRadius(6)
-                }
-                .buttonStyle(.card)
-                .focused($focusedControl, equals: .previousSegment)
-                .disabled(viewModel.loopMarks.count < 2)
-                
-                // Next Segment button
-                Button {
-                    viewModel.nextSegment()
-                } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 20))
-                    }
-                    .frame(width: 40, height: 40)
-                    .background(focusedControl == .nextSegment ? Color.blue : Color.black.opacity(0.7))
-                    .cornerRadius(6)
-                }
-                .buttonStyle(.card)
-                .focused($focusedControl, equals: .nextSegment)
-                .disabled(viewModel.loopMarks.count < 2)
                 
                 // Toggle Loop button
                 Button {

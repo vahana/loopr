@@ -164,56 +164,88 @@ class VideoControlBarViewModel: ObservableObject {
     }
     
     // Move to next segment
-        func nextSegment() {
-            guard loopMarks.count >= 2 else { return }
-            
-            // Always pause the video when moving to a new segment
-            if isPlaying {
-                player.pause()
-                isPlaying = false
-            }
-            
-            // The last valid segment index is (loopMarks.count - 2)
-            // Because a segment is defined by two marks
-            if currentSegmentIndex < loopMarks.count - 2 {
-                currentSegmentIndex += 1
-            } else {
-                // Wrap around to first segment
-                currentSegmentIndex = 0
-            }
-            
-            // Reset loop timer
-            loopTimerActive = true
-            loopTimeRemaining = 30.0
-            
-            // Move to start of new segment
-            moveToCurrentSegment()
+    func nextSegment() {
+        guard loopMarks.count >= 2 else { return }
+        
+        // Always pause the video when moving to a new segment
+        if isPlaying {
+            player.pause()
+            isPlaying = false
         }
         
-        // Move to previous segment
-        func previousSegment() {
-            guard loopMarks.count >= 2 else { return }
-            
-            // Always pause the video when moving to a new segment
-            if isPlaying {
-                player.pause()
-                isPlaying = false
-            }
-            
-            if currentSegmentIndex > 0 {
-                currentSegmentIndex -= 1
-            } else {
-                // Wrap around to last segment
-                currentSegmentIndex = loopMarks.count - 2
-            }
-            
-            // Reset loop timer
-            loopTimerActive = true
-            loopTimeRemaining = 30.0
-            
-            // Move to start of new segment
-            moveToCurrentSegment()
+        // The last valid segment index is (loopMarks.count - 2)
+        // Because a segment is defined by two marks
+        if currentSegmentIndex < loopMarks.count - 2 {
+            currentSegmentIndex += 1
+        } else {
+            // Wrap around to first segment
+            currentSegmentIndex = 0
         }
+        
+        // Reset loop timer
+        loopTimerActive = true
+        loopTimeRemaining = 30.0
+        
+        // Move to start of new segment
+        moveToCurrentSegment()
+    }
+    
+    // Move to previous segment
+    func previousSegment() {
+        guard loopMarks.count >= 2 else { return }
+        
+        // Always pause the video when moving to a new segment
+        if isPlaying {
+            player.pause()
+            isPlaying = false
+        }
+        
+        if currentSegmentIndex > 0 {
+            currentSegmentIndex -= 1
+        } else {
+            // Wrap around to last segment
+            currentSegmentIndex = loopMarks.count - 2
+        }
+        
+        // Reset loop timer
+        loopTimerActive = true
+        loopTimeRemaining = 30.0
+        
+        // Move to start of new segment
+        moveToCurrentSegment()
+    }
+    
+    // Jump to the next mark if available
+    func jumpToNextMark() {
+        guard !loopMarks.isEmpty else { return }
+        
+        // Find the next mark that's after current time
+        if let nextMark = loopMarks.first(where: { $0 > currentTime }) {
+            seekToTime(nextMark)
+        }
+    }
+    
+    // Jump to the previous mark if available
+    func jumpToPreviousMark() {
+        guard !loopMarks.isEmpty else { return }
+        
+        // Find the nearest mark that's before current time
+        if let prevMark = loopMarks.filter({ $0 < currentTime }).max() {
+            seekToTime(prevMark)
+        }
+    }
+    
+    // Perform a large seek (used for long press)
+    func seekLargeBackward() {
+        let newTime = max(0, currentTime - 10.0)
+        seekToTime(newTime)
+    }
+    
+    // Perform a large seek (used for long press)
+    func seekLargeForward() {
+        let newTime = min(duration, currentTime + 10.0)
+        seekToTime(newTime)
+    }
     
     // Helper to move to the start of current segment
     private func moveToCurrentSegment() {
@@ -467,7 +499,7 @@ class VideoControlBarViewModel: ObservableObject {
     
     private func calculateProgressiveSeekAmount(clicks: Int) -> Double {
         switch clicks {
-        case 0:  return 1.0  // First click: 2 seconds
+        case 0:  return 1.0  // First click: 1 second
         case 1:  return 5.0  // Second click: 5 seconds
         default:  return 10.0 // Third click: 10 seconds
         }
@@ -477,6 +509,6 @@ class VideoControlBarViewModel: ObservableObject {
 // Focus state enum (important for tvOS navigation)
 enum VideoControlFocus: Int {
     case seekBackward, seekForward
-    case addMark, previousSegment, nextSegment, toggleLoop
+    case addMark, toggleLoop
     case startTimer, clearMarks
 }
