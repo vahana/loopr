@@ -131,6 +131,22 @@ struct VideoControlBarView: View {
                 .buttonStyle(.card)
                 .focused($focusedControl, equals: .toggleLoop)
                 .disabled(viewModel.loopMarks.count < 2)
+                
+                // Clear Marks button
+                Button {
+                    viewModel.clearMarks()
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: "xmark.circle")
+                            .font(.system(size: 20))
+                    }
+                    .frame(width: 40, height: 40)
+                    .background(focusedControl == .clearMarks ? Color.blue : Color.black.opacity(0.7))
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.card)
+                .focused($focusedControl, equals: .clearMarks)
+                .disabled(viewModel.loopMarks.isEmpty)
             }
             
             // Loop indicators (when active)

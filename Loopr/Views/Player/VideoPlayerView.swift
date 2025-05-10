@@ -1,6 +1,4 @@
 // File: Loopr/VideoPlayerView.swift
-// Updated version with menu button hints removed
-
 import SwiftUI
 import AVKit
 
@@ -44,10 +42,11 @@ struct VideoPlayerView: View {
         // Initialize with placeholder player first
         let initialPlayer = AVPlayer()
         _player = State(initialValue: initialPlayer)
-        _viewModel = StateObject(wrappedValue: VideoControlBarViewModel(player: initialPlayer))
         
-        // Set initial seek step size
-        _viewModel.wrappedValue.seekStepSize = seekStepSize
+        // Create view model with video URL
+        let viewModel = VideoControlBarViewModel(player: initialPlayer, videoURL: video.url)
+        viewModel.seekStepSize = seekStepSize
+        _viewModel = StateObject(wrappedValue: viewModel)
     }
     
     // MARK: - Body
@@ -147,6 +146,12 @@ struct VideoPlayerView: View {
             viewModel.toggleLoop()
             return .handled
         }
+        .onKeyPress("c") {
+            // Clear marks shortcut - use a local variable to avoid binding issues
+            let vm = viewModel
+            vm.clearMarks()
+            return .handled
+        }
         .onKeyPress("t") {
             // Shortcut for timer
             viewModel.startTimer()
@@ -202,8 +207,10 @@ struct VideoPlayerView: View {
                         let seconds = durationValue.seconds
                         if seconds.isFinite && !seconds.isNaN && seconds > 0 {
                             self.viewModel.duration = seconds
-                            // Add a mark at the end of the video for convenience
+                            
+                            // Only add default marks if no saved marks were loaded
                             if self.viewModel.loopMarks.isEmpty {
+                                // Add default marks at start and end of video
                                 self.viewModel.loopMarks = [0, seconds]
                             }
                         } else {

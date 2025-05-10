@@ -13,7 +13,14 @@ class VideoControlBarViewModel: ObservableObject {
     @Published var seekStepSize: Double = 5.0
     
     // Loop feature states
-    @Published var loopMarks: [Double] = []
+    @Published var loopMarks: [Double] = [] {
+        didSet {
+            // Save marks when they change
+            if let videoURL = videoURL {
+                VideoMarksManager.shared.saveMarks(loopMarks, for: videoURL)
+            }
+        }
+    }
     @Published var currentSegmentIndex: Int = 0
     @Published var isLooping = false
     
@@ -32,9 +39,18 @@ class VideoControlBarViewModel: ObservableObject {
     // Reference to player
     var player: AVPlayer
     
+    // Reference to current video URL for saving marks
+    var videoURL: URL?
+    
     // MARK: - Initialization
-    init(player: AVPlayer) {
+    init(player: AVPlayer, videoURL: URL? = nil) {
         self.player = player
+        self.videoURL = videoURL
+        
+        // Load marks if URL is provided
+        if let url = videoURL {
+            loopMarks = VideoMarksManager.shared.getMarks(for: url)
+        }
     }
     
     // MARK: - Control Methods
@@ -92,6 +108,32 @@ class VideoControlBarViewModel: ObservableObject {
         updateCurrentSegmentIndex()
     }
     
+    // Clear all marks
+    func clearMarks() {
+        // Always pause the video when clearing marks
+        if isPlaying {
+            player.pause()
+            isPlaying = false
+        }
+        
+        // Clear the marks array
+        loopMarks = []
+        
+        // If looping was active, disable it
+        if isLooping {
+            isLooping = false
+            loopTimerActive = false
+        }
+        
+        // Reset current segment index
+        currentSegmentIndex = 0
+        
+        // Clear marks from persistent storage
+        if let url = videoURL {
+            VideoMarksManager.shared.clearMarks(for: url)
+        }
+    }
+    
     // Toggle looping
     func toggleLoop() {
         // Need at least 2 marks to create a segment
@@ -122,54 +164,56 @@ class VideoControlBarViewModel: ObservableObject {
     }
     
     // Move to next segment
-    func nextSegment() {
-        guard loopMarks.count >= 2 else { return }
-        
-        // Always pause the video when moving to a new segment
-        if isPlaying {
-            player.pause()
-            isPlaying = false
+        func nextSegment() {
+            guard loopMarks.count >= 2 else { return }
+            
+            // Always pause the video when moving to a new segment
+            if isPlaying {
+                player.pause()
+                isPlaying = false
+            }
+            
+            // The last valid segment index is (loopMarks.count - 2)
+            // Because a segment is defined by two marks
+            if currentSegmentIndex < loopMarks.count - 2 {
+                currentSegmentIndex += 1
+            } else {
+                // Wrap around to first segment
+                currentSegmentIndex = 0
+            }
+            
+            // Reset loop timer
+            loopTimerActive = true
+            loopTimeRemaining = 30.0
+            
+            // Move to start of new segment
+            moveToCurrentSegment()
         }
         
-        if currentSegmentIndex < loopMarks.count - 2 {
-            currentSegmentIndex += 1
-        } else {
-            // Wrap around to first segment
-            currentSegmentIndex = 0
+        // Move to previous segment
+        func previousSegment() {
+            guard loopMarks.count >= 2 else { return }
+            
+            // Always pause the video when moving to a new segment
+            if isPlaying {
+                player.pause()
+                isPlaying = false
+            }
+            
+            if currentSegmentIndex > 0 {
+                currentSegmentIndex -= 1
+            } else {
+                // Wrap around to last segment
+                currentSegmentIndex = loopMarks.count - 2
+            }
+            
+            // Reset loop timer
+            loopTimerActive = true
+            loopTimeRemaining = 30.0
+            
+            // Move to start of new segment
+            moveToCurrentSegment()
         }
-        
-        // Reset loop timer
-        loopTimerActive = true
-        loopTimeRemaining = 30.0
-        
-        // Move to start of new segment
-        moveToCurrentSegment()
-    }
-    
-    // Move to previous segment
-    func previousSegment() {
-        guard loopMarks.count >= 2 else { return }
-        
-        // Always pause the video when moving to a new segment
-        if isPlaying {
-            player.pause()
-            isPlaying = false
-        }
-        
-        if currentSegmentIndex > 0 {
-            currentSegmentIndex -= 1
-        } else {
-            // Wrap around to last segment
-            currentSegmentIndex = max(0, loopMarks.count - 2)
-        }
-        
-        // Reset loop timer
-        loopTimerActive = true
-        loopTimeRemaining = 30.0
-        
-        // Move to start of new segment
-        moveToCurrentSegment()
-    }
     
     // Helper to move to the start of current segment
     private func moveToCurrentSegment() {
@@ -433,6 +477,6 @@ class VideoControlBarViewModel: ObservableObject {
 // Focus state enum (important for tvOS navigation)
 enum VideoControlFocus: Int {
     case seekBackward, play, seekForward
-    case addMark, previousSegment, nextSegment, toggleLoop
+    case addMark, previousSegment, nextSegment, toggleLoop, clearMarks
     case startTimer
 }
