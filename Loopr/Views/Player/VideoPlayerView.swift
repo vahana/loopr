@@ -90,6 +90,10 @@ struct VideoPlayerView: View {
         .onExitCommand {
             handleMenuButtonPress()
         }
+        // Handle tvOS Play/Pause button press
+        .onPlayPauseCommand {
+            viewModel.togglePlayPause()
+        }
         .onAppear {
             // When the view appears, set up the player
             setupPlayer()
@@ -160,6 +164,11 @@ struct VideoPlayerView: View {
         .onKeyPress(.escape) {
             // Use the same handler for escape key (for debugging on Mac)
             handleMenuButtonPress()
+            return .handled
+        }
+        .onKeyPress(.space) {
+            // Space key toggles play/pause too
+            viewModel.togglePlayPause()
             return .handled
         }
     }
