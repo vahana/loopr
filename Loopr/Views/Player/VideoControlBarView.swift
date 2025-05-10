@@ -276,10 +276,17 @@ struct VideoControlBarView: View {
         }
         .onChange(of: isInMarkAdjustmentMode) { newValue in
             if newValue {
-                // When entering mark adjustment mode, ensure we're on a mark
+                // When entering mark adjustment mode:
+                
+                // 1. Ensure we're on a mark
                 viewModel.moveToNearestMark()
                 
-                // Move focus to the backward button for immediate adjustment
+                // 2. Pause the video
+                if viewModel.isPlaying {
+                    viewModel.togglePlayPause()
+                }
+                
+                // 3. Move focus to the backward button for immediate adjustment
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     focusedControl = .seekBackward
                 }

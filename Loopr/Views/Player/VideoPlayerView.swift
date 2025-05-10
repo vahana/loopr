@@ -257,8 +257,9 @@ struct VideoPlayerView: View {
                 }
             }
             
-            // Start playing
-            player.play()
+            // Start with player paused instead of playing
+            player.pause()
+            self.viewModel.isPlaying = false
         }
     }
 }
