@@ -1,7 +1,6 @@
 import SwiftUI
 import AVKit
 
-/// Control bar for video player with transport controls, looping, and timer
 struct VideoControlBarView: View {
     // MARK: - Properties
     @ObservedObject var viewModel: VideoControlBarViewModel
@@ -9,7 +8,7 @@ struct VideoControlBarView: View {
     
     // MARK: - State
     @State private var showClearMarksConfirmation = false
-    @State private var lastTapTimes: [VideoControlFocus: Date] = [:]
+    @State private var lastClickTime: [VideoControlFocus: Date] = [:]
     
     // MARK: - UI Constants
     private enum UI {
@@ -19,7 +18,7 @@ struct VideoControlBarView: View {
         static let cornerRadius: CGFloat = 6
         static let spacing: CGFloat = 12
         static let controlSpacing: CGFloat = 8
-        static let doubleTapThreshold: TimeInterval = 0.2
+        static let doubleClickThreshold: TimeInterval = 0.5  // Slightly longer for tvOS
         static let barPadding: EdgeInsets = EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12)
         static let indicatorPadding: EdgeInsets = EdgeInsets(top: 3, leading: 6, bottom: 3, trailing: 6)
     }
@@ -51,13 +50,31 @@ struct VideoControlBarView: View {
     /// Transport controls (rewind/forward)
     private var transportControls: some View {
         HStack(spacing: UI.spacing) {
-            seekButton(for: .seekBackward, icon: "backward.fill",
-                onSingleTap: viewModel.seekBackward,
-                onDoubleTap: viewModel.jumpToPreviousMark)
+            // Backward button - tvOS compatible
+            Button {
+                handleButtonClick(.seekBackward)
+            } label: {
+                Image(systemName: "backward.fill")
+                    .font(.system(size: 20))
+                    .frame(width: UI.seekButtonWidth, height: UI.buttonHeight)
+                    .background(buttonBackgroundColor(for: .seekBackward))
+                    .cornerRadius(UI.cornerRadius)
+            }
+            .buttonStyle(.card) // Important for tvOS
+            .focused($focusedControl, equals: .seekBackward)
             
-            seekButton(for: .seekForward, icon: "forward.fill",
-                onSingleTap: viewModel.seekForward,
-                onDoubleTap: viewModel.jumpToNextMark)
+            // Forward button - tvOS compatible
+            Button {
+                handleButtonClick(.seekForward)
+            } label: {
+                Image(systemName: "forward.fill")
+                    .font(.system(size: 20))
+                    .frame(width: UI.seekButtonWidth, height: UI.buttonHeight)
+                    .background(buttonBackgroundColor(for: .seekForward))
+                    .cornerRadius(UI.cornerRadius)
+            }
+            .buttonStyle(.card) // Important for tvOS
+            .focused($focusedControl, equals: .seekForward)
         }
     }
     
@@ -153,26 +170,6 @@ struct VideoControlBarView: View {
     
     // MARK: - Helper Methods
     
-    /// Create a seek button with single/double tap functionality
-    private func seekButton(
-        for focus: VideoControlFocus,
-        icon: String,
-        onSingleTap: @escaping () -> Void,
-        onDoubleTap: @escaping () -> Void
-    ) -> some View {
-        Button {
-            handleDoubleTap(focus, onSingle: onSingleTap, onDouble: onDoubleTap)
-        } label: {
-            Image(systemName: icon)
-                .font(.system(size: 20))
-                .frame(width: UI.seekButtonWidth, height: UI.buttonHeight)
-                .background(buttonBackgroundColor(for: focus))
-                .cornerRadius(UI.cornerRadius)
-        }
-        .buttonStyle(.card)
-        .focused($focusedControl, equals: focus)
-    }
-    
     /// Create a standard control button
     private func controlButton(
         for focus: VideoControlFocus,
@@ -189,7 +186,7 @@ struct VideoControlBarView: View {
                 .background(buttonBackgroundColor(for: focus, activeColor: activeColor))
                 .cornerRadius(UI.cornerRadius)
         }
-        .buttonStyle(.card)
+        .buttonStyle(.card)  // Important for tvOS
         .focused($focusedControl, equals: focus)
         .disabled(isDisabled)
     }
@@ -201,29 +198,55 @@ struct VideoControlBarView: View {
             : (activeColor ?? Color.black.opacity(0.7))
     }
     
-    /// Handle double-tap detection
-    private func handleDoubleTap(
-        _ control: VideoControlFocus,
-        onSingle: @escaping () -> Void,
-        onDouble: @escaping () -> Void
-    ) {
-        let now = Date()
-        
-        if let lastTap = lastTapTimes[control],
-           now.timeIntervalSince(lastTap) < UI.doubleTapThreshold {
-            onDouble()
-            lastTapTimes[control] = nil
-        } else {
-            onSingle()
-            lastTapTimes[control] = now
-        }
-    }
-    
     /// Format timer time as MM:SS
     private func formatTimerTime(_ seconds: Int) -> String {
         let minutes = seconds / 60
         let secs = seconds % 60
         return String(format: "%02d:%02d", minutes, secs)
+    }
+    
+    /// Handle button click with double-click detection for tvOS
+    private func handleButtonClick(_ control: VideoControlFocus) {
+        let now = Date()
+        
+        // Check if this is a double-click
+        if let lastTime = lastClickTime[control],
+           now.timeIntervalSince(lastTime) < UI.doubleClickThreshold {
+            // Double-click detected
+            print("Double-click detected for \(control)")
+            lastClickTime[control] = nil // Reset
+            
+            // Execute double-click action
+            if control == .seekBackward {
+                viewModel.jumpToPreviousMark()
+            } else if control == .seekForward {
+                viewModel.jumpToNextMark()
+            }
+        } else {
+            // First click - store time
+            lastClickTime[control] = now
+            
+            // Execute single-click action after a short delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                // Only execute if not a double-click
+                if let clickTime = self.lastClickTime[control],
+                   clickTime == now { // Same timestamp means no second click has happened
+                    DispatchQueue.main.asyncAfter(deadline: .now() + UI.doubleClickThreshold) {
+                        // Check again if the timestamp is still the same
+                        if self.lastClickTime[control] == now {
+                            print("Single-click action for \(control)")
+                            // Execute single-click action
+                            if control == .seekBackward {
+                                self.viewModel.seekBackward()
+                            } else if control == .seekForward {
+                                self.viewModel.seekForward()
+                            }
+                            self.lastClickTime[control] = nil // Reset
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
