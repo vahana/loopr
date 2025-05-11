@@ -187,7 +187,7 @@ struct VideoPlayerView: View {
                     loadVideoMetadata(player: player)
                     
                     // Start playback
-                    player.play()
+                    // player.play()
                 }
             }
             

@@ -39,6 +39,10 @@ struct VideoControlBarView: View {
             Button("Cancel", role: .cancel) { }
             Button("Clear All", role: .destructive) {
                 viewModel.clearMarks()
+                // Add this line to restore focus after clearing marks
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.focusedControl = .seekForward
+                }
             }
         } message: {
             Text("Are you sure you want to clear all marks? This action cannot be undone.")
