@@ -63,6 +63,19 @@ struct VideoControlBarView: View {
             .buttonStyle(.card) // Important for tvOS
             .focused($focusedControl, equals: .seekBackward)
             
+            // Seek step toggle button
+            Button {
+                viewModel.toggleSeekStepSize()
+            } label: {
+                Text("\(Int(viewModel.seekStepSize))s")
+                    .font(.system(size: 14))
+                    .frame(width: UI.seekButtonWidth, height: UI.buttonHeight)
+                    .background(buttonBackgroundColor(for: .seekStepToggle))
+                    .cornerRadius(UI.cornerRadius)
+            }
+            .buttonStyle(.card)
+            .focused($focusedControl, equals: .seekStepToggle)
+            
             // Forward button - tvOS compatible
             Button {
                 handleButtonClick(.seekForward)
@@ -255,4 +268,5 @@ enum VideoControlFocus: Int {
     case seekBackward, seekForward
     case addMark, toggleLoop
     case startTimer, clearMarks
+    case seekStepToggle
 }
