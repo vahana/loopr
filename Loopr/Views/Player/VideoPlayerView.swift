@@ -1,121 +1,66 @@
-// File: Loopr/VideoPlayerView.swift
 import SwiftUI
 import AVKit
 
-// Full-screen video player with controls below video
+/// Full-screen video player with controls
 struct VideoPlayerView: View {
     // MARK: - Properties
-    
-    // The video to play
     let video: Video
-    
-    // Function to call when back button is pressed
     let onBack: () -> Void
-    
-    // MARK: - State Variables
-    
-    // The video player
-    @State private var player: AVPlayer
-    
-    // View model for controls
-    @StateObject private var viewModel: VideoControlBarViewModel
-    
-    // Track the last time menu button was pressed for double-press detection
-    @State private var lastMenuPressTime: Date? = nil
-    
-    // Focus state (important for tvOS navigation)
-    @FocusState private var focusedControl: VideoControlFocus?
-    
-    // Timer to update player state
-    let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
-    
     let networkManager: NetworkManager
     
-    // MARK: - Initialization
+    // MARK: - State
+    @State var player: AVPlayer
+    @StateObject private var viewModel: VideoControlBarViewModel
+    @State private var lastMenuPressTime: Date? = nil
+    @FocusState private var focusedControl: VideoControlFocus?
     
-    // Custom initializer to set up the player
-    init(video: Video, onBack: @escaping () -> Void, seekStepSize: Double = 5.0, networkManager: NetworkManager) {
+    // MARK: - Constants
+    private enum UI {
+        static let aspectRatio: CGFloat = 16/9
+        static let topBarPadding: EdgeInsets = EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16)
+        static let doublePressThreshold: TimeInterval = 1.0
+        static let initialFocusDelay: TimeInterval = 0.2
+        static let timerInterval: TimeInterval = 0.5
+        static let defaultSeekStep: Double = 5.0
+        static let minimumTimeFromEnd: Double = 10.0
+    }
+    
+    // Timer to update player state
+    let timer = Timer.publish(every: UI.timerInterval, on: .main, in: .common).autoconnect()
+    
+    // MARK: - Initialization
+    init(video: Video, onBack: @escaping () -> Void, seekStepSize: Double = UI.defaultSeekStep, networkManager: NetworkManager) {
         self.video = video
         self.onBack = onBack
         self.networkManager = networkManager
         
-        // Initialize with placeholder player first
+        // Initialize with placeholder player
         let initialPlayer = AVPlayer()
         _player = State(initialValue: initialPlayer)
         
-        // Create view model with video URL
+        // Create view model
         let viewModel = VideoControlBarViewModel(player: initialPlayer, videoURL: video.url)
         viewModel.seekStepSize = seekStepSize
         _viewModel = StateObject(wrappedValue: viewModel)
     }
     
     // MARK: - Body
-    
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             
-            // Main content
             VStack(spacing: 0) {
-                // Top bar with video title
-                HStack {
-                    // Video title
-                    Text(video.title)
-                        .font(.headline)
-                        .foregroundColor(.white)
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-                .background(Color.black.opacity(0.8))
-                
-                // Standard VideoPlayer from AVKit
-                VideoPlayer(player: player) {
-                    // Overlay
-                    EmptyView()
-                }
-                .aspectRatio(16/9, contentMode: .fit)
-                .onTapGesture(count: 1) {
-                    viewModel.togglePlayPause()
-                }
-                
-                // Progress bar component
+                videoTitleBar
+                videoPlayer
                 VideoProgressBarView(viewModel: viewModel)
-                
-                // Control bar component
                 VideoControlBarView(viewModel: viewModel, focusedControl: _focusedControl)
             }
             .ignoresSafeArea(edges: [.horizontal])
         }
-        // Handle tvOS Menu button press - custom handler for loop state
-        .onExitCommand {
-            handleMenuButtonPress()
-        }
-        // Handle tvOS Play/Pause button press
-        .onPlayPauseCommand {
-            viewModel.togglePlayPause()
-        }
-        .onAppear {
-            // When the view appears, set up the player
-            setupPlayer()
-            
-            // Record that this video was played
-            VideoCacheManager.shared.updateLastPlayed(for: video.url)
-            
-            // Set initial focus to seek forward button
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                focusedControl = .seekForward
-            }
-        }
-        .onDisappear {
-            // When the view disappears, pause the player
-            player.pause()
-            
-            // Save the current position
-            if viewModel.currentTime > 0 {
-                VideoPositionManager.shared.savePosition(viewModel.currentTime, for: video.url)
-            }
-        }
-        // Update player state on timer
+        .onExitCommand(perform: handleMenuButtonPress)
+        .onPlayPauseCommand(perform: viewModel.togglePlayPause)
+        .onAppear(perform: handleAppear)
+        .onDisappear(perform: handleDisappear)
         .onReceive(timer) { _ in
             viewModel.updatePlayerState()
             viewModel.updateTimerState()
@@ -136,11 +81,7 @@ struct VideoPlayerView: View {
             return .ignored
         }
         .onKeyPress("m") {
-            viewModel.addMark()
-            return .handled
-        }
-        .onKeyPress("d") {
-            viewModel.removeMark()
+            viewModel.toggleMark()
             return .handled
         }
         .onKeyPress("[") {
@@ -156,109 +97,173 @@ struct VideoPlayerView: View {
             return .handled
         }
         .onKeyPress("c") {
-            // Clear marks shortcut - use a local variable to avoid binding issues
-            let vm = viewModel
-            vm.clearMarks()
+            viewModel.clearMarks()
             return .handled
         }
         .onKeyPress("t") {
-            // Shortcut for timer
             viewModel.startTimer()
             return .handled
         }
         .onKeyPress(.escape) {
-            // Use the same handler for escape key (for debugging on Mac)
-            handleMenuButtonPress()
-            return .handled
-        }
-        .onKeyPress(.space) {
-            // Space key toggles play/pause too
-            viewModel.togglePlayPause()
-            return .handled
-        }
-    }
-    
-    // MARK: - Menu Button Handler
-    
-    // Handle menu button press with special behavior for looping
-    private func handleMenuButtonPress() {
-        // Save the current position before going back
-        if viewModel.currentTime > 0 {
-            VideoPositionManager.shared.savePosition(viewModel.currentTime, for: video.url)
-        }
-        
-        // If looping is active, first press turns it off
-        if viewModel.isLooping {
-            // Check if this is a double-press (within 1 second)
-            if let lastPress = lastMenuPressTime, Date().timeIntervalSince(lastPress) < 1.0 {
-                // Double-press detected, go back to video list
-                onBack()
-            } else {
-                // First press, turn off looping
-                viewModel.isLooping = false
-                
-                // Record the time of this press
-                lastMenuPressTime = Date()
+                    handleMenuButtonPress()
+                    return .handled
+                }
+                .onKeyPress(.space) {
+                    viewModel.togglePlayPause()
+                    return .handled
+                }
             }
-        } else {
-            // Not looping, so just go back
-            onBack()
-        }
-    }
-    // MARK: - Setup Methods
-    
-    // Set up the player initially
-    private func setupPlayer() {
-        // Try to load from cache
-        networkManager.loadVideoWithCache(from: video.url) { finalURL in
-            // Create player with the cached URL or original if caching failed
-            let player = AVPlayer(url: finalURL)
-            self.player = player
-            self.viewModel.player = player
             
-            // Load duration
-            if let asset = player.currentItem?.asset {
+            // MARK: - UI Components
+            
+            /// Video title bar at the top
+            private var videoTitleBar: some View {
+                HStack {
+                    Text(video.title)
+                        .font(.headline)
+                        .foregroundColor(.white)
+                }
+                .padding(UI.topBarPadding)
+                .background(Color.black.opacity(0.8))
+            }
+            
+            /// Main video player component
+            private var videoPlayer: some View {
+                VideoPlayer(player: player) {
+                    EmptyView()
+                }
+                .aspectRatio(UI.aspectRatio, contentMode: .fit)
+                .onTapGesture(count: 1) {
+                    viewModel.togglePlayPause()
+                }
+            }
+            
+            // MARK: - Event Handlers
+            
+            /// Handle view appearance
+            private func handleAppear() {
+                setupPlayer()
+                recordVideoPlayed()
+                setInitialFocus()
+            }
+            
+            /// Handle view disappearance
+            private func handleDisappear() {
+                player.pause()
+                saveVideoPosition()
+            }
+            
+            /// Handle menu button press (with double-press detection for loop mode)
+            private func handleMenuButtonPress() {
+                saveVideoPosition()
+                
+                if viewModel.isLooping {
+                    if let lastPress = lastMenuPressTime,
+                       Date().timeIntervalSince(lastPress) < UI.doublePressThreshold {
+                        // Double-press detected, exit video
+                        onBack()
+                    } else {
+                        // First press, just disable looping
+                        viewModel.isLooping = false
+                        lastMenuPressTime = Date()
+                    }
+                } else {
+                    // Not in loop mode, exit immediately
+                    onBack()
+                }
+            }
+            
+            // MARK: - Helper Methods
+            
+            /// Set up the player and load video
+            private func setupPlayer() {
+                networkManager.loadVideoWithCache(from: video.url) { finalURL in
+                    // Create player with final URL (cached or original)
+                    let player = AVPlayer(url: finalURL)
+                    self.player = player
+                    self.viewModel.player = player
+                    
+                    // Load video metadata asynchronously
+                    loadVideoMetadata(player: player)
+                    
+                    // Start playback
+                    player.play()
+                }
+            }
+            
+            /// Load video metadata (duration, marks)
+            private func loadVideoMetadata(player: AVPlayer) {
+                guard let asset = player.currentItem?.asset else { return }
+                
                 Task {
                     do {
                         let durationValue = try await asset.load(.duration)
-                        // Ensure duration is valid before using it
                         let seconds = durationValue.seconds
-                        if seconds.isFinite && !seconds.isNaN && seconds > 0 {
-                            self.viewModel.duration = seconds
-                            
-                            // Only add default marks if no saved marks were loaded
-                            if self.viewModel.loopMarks.isEmpty {
-                                // Add default marks at start and end of video
-                                self.viewModel.loopMarks = [0, seconds]
-                            }
-                            
-                            // Restore previous position if available
-                            if let savedPosition = VideoPositionManager.shared.getPosition(for: self.video.url) {
-                                // Make sure saved position is within valid range and at least 10 seconds before the end
-                                if savedPosition > 0 && savedPosition < (seconds - 10) {
-                                    // Seek to the saved position
-                                    await self.player.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600))
-                                    self.viewModel.currentTime = savedPosition
-                                    
-                                    // Show a notification that we've restored position
-                                    print("Restored video position to \(self.viewModel.formatTime(savedPosition))")
-                                }
-                            }
+                        
+                        if isValidDuration(seconds) {
+                            viewModel.duration = seconds
+                            setupDefaultMarksIfNeeded(duration: seconds)
+                            restorePreviousPosition(duration: seconds)
                         } else {
-                            // Set a default duration if the actual one is invalid
-                            self.viewModel.duration = 0
-                            print("Warning: Invalid duration value: \(seconds)")
+                            handleInvalidDuration(seconds)
                         }
                     } catch {
                         print("Failed to load duration: \(error)")
-                        // Set default values on error
-                        self.viewModel.duration = 0
+                        viewModel.duration = 0
                     }
                 }
             }
             
-            // Start playing
-            player.play()
+            /// Check if duration is valid and usable
+            private func isValidDuration(_ duration: Double) -> Bool {
+                return duration.isFinite && !duration.isNaN && duration > 0
+            }
+            
+            /// Initialize default marks at start and end if none exist
+            private func setupDefaultMarksIfNeeded(duration: Double) {
+                if viewModel.loopMarks.isEmpty {
+                    viewModel.loopMarks = [0, duration]
+                }
+            }
+            
+            /// Restore previous position if available
+            private func restorePreviousPosition(duration: Double) {
+                guard let savedPosition = VideoPositionManager.shared.getPosition(for: video.url),
+                      savedPosition > 0 && savedPosition < (duration - UI.minimumTimeFromEnd) else {
+                    return
+                }
+                
+                Task {
+                    // Capture player reference before async operation
+                    let playerRef = player
+                    await playerRef.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600))
+                    viewModel.currentTime = savedPosition
+                    print("Restored video position to \(viewModel.formatTime(savedPosition))")
+                }
+            }
+            
+            /// Handle case where duration is invalid
+            private func handleInvalidDuration(_ duration: Double) {
+                viewModel.duration = 0
+                print("Warning: Invalid duration value: \(duration)")
+            }
+            
+            /// Record that this video was played in history
+            private func recordVideoPlayed() {
+                VideoCacheManager.shared.updateLastPlayed(for: video.url)
+            }
+            
+            /// Set initial focus on seek button
+            private func setInitialFocus() {
+                DispatchQueue.main.asyncAfter(deadline: .now() + UI.initialFocusDelay) {
+                    focusedControl = .seekForward
+                }
+            }
+            
+            /// Save current position before exiting
+            private func saveVideoPosition() {
+                if viewModel.currentTime > 0 {
+                    VideoPositionManager.shared.savePosition(viewModel.currentTime, for: video.url)
+                }
+            }
         }
-    }
-}
