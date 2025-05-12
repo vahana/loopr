@@ -94,6 +94,7 @@ class VideoControlBarViewModel: ObservableObject {
     func jumpToNextMark() {
         print("Jump to next mark called")
         
+        // Always pause when seeking during loop mode
         if isPlaying {
             player.pause()
             isPlaying = false
@@ -115,9 +116,7 @@ class VideoControlBarViewModel: ObservableObject {
             // Reset the loop timer
             resetLoopTimer()
             
-            // Start playback again if we were playing
-            isPlaying = true
-            player.play()
+            // Keep video paused in loop mode when navigating with mark jumps
         } else {
             // Normal mark navigation when not in loop mode
             if let nextMark = loopMarks.first(where: { $0 > currentTime + 0.1 }) {
@@ -137,6 +136,7 @@ class VideoControlBarViewModel: ObservableObject {
     func jumpToPreviousMark() {
         print("Jump to previous mark called")
         
+        // Always pause when seeking during loop mode
         if isPlaying {
             player.pause()
             isPlaying = false
@@ -164,9 +164,7 @@ class VideoControlBarViewModel: ObservableObject {
             // Reset the loop timer
             resetLoopTimer()
             
-            // Start playback again if we were playing
-            isPlaying = true
-            player.play()
+            // Keep video paused in loop mode when navigating with mark jumps
         } else {
             // Normal mark navigation when not in loop mode
             if let prevMark = loopMarks.filter({ $0 < currentTime - 0.1 }).max() {
@@ -181,7 +179,7 @@ class VideoControlBarViewModel: ObservableObject {
             }
         }
     }
-    
+
     /// Find the nearest mark between two time points
     ///
     private func findNearestMarkBetween(start: Double, end: Double) -> Double? {
