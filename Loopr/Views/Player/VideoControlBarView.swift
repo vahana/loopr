@@ -45,7 +45,7 @@ struct VideoControlBarView: View {
                 }
             }
         } message: {
-            Text("Are you sure you want to clear all marks? This action cannot be undone.")
+            Text("Are you sure?")
         }
     }
     

@@ -89,17 +89,46 @@ class VideoControlBarViewModel: ObservableObject {
         seekToTime(newTime)
     }
 
-    /// Jump to next mark if available
+    /// Jump to next mark if availablea
+    ///
     func jumpToNextMark() {
         print("Jump to next mark called")
-        if let nextMark = loopMarks.first(where: { $0 > currentTime + 0.1 }) {
-            print("Found next mark at: \(nextMark)")
-            seekToTime(nextMark)
+        
+        if isPlaying {
+            player.pause()
+            isPlaying = false
+        }
+        
+        if isLooping {
+            // In loop mode, jumping forward should go to the start of the next segment
+            if currentSegmentIndex < loopMarks.count - 2 {
+                currentSegmentIndex += 1
+                let segmentStart = getCurrentSegmentStart()
+                seekToTime(segmentStart)
+            } else {
+                // If at the last segment, loop back to the first segment
+                currentSegmentIndex = 0
+                let segmentStart = getCurrentSegmentStart()
+                seekToTime(segmentStart)
+            }
+            
+            // Reset the loop timer
+            resetLoopTimer()
+            
+            // Start playback again if we were playing
+            isPlaying = true
+            player.play()
         } else {
-            // If no next mark, jump to the first mark (loop around)
-            if let firstMark = loopMarks.min() {
-                print("Looping to first mark at: \(firstMark)")
-                seekToTime(firstMark)
+            // Normal mark navigation when not in loop mode
+            if let nextMark = loopMarks.first(where: { $0 > currentTime + 0.1 }) {
+                print("Found next mark at: \(nextMark)")
+                seekToTime(nextMark)
+            } else {
+                // If no next mark, jump to the first mark (loop around)
+                if let firstMark = loopMarks.min() {
+                    print("Looping to first mark at: \(firstMark)")
+                    seekToTime(firstMark)
+                }
             }
         }
     }
@@ -107,14 +136,48 @@ class VideoControlBarViewModel: ObservableObject {
     /// Jump to previous mark if available
     func jumpToPreviousMark() {
         print("Jump to previous mark called")
-        if let prevMark = loopMarks.filter({ $0 < currentTime - 0.1 }).max() {
-            print("Found previous mark at: \(prevMark)")
-            seekToTime(prevMark)
+        
+        if isPlaying {
+            player.pause()
+            isPlaying = false
+        }
+        
+        if isLooping {
+            // In loop mode, jumping backward should go to the start of the current segment first
+            // If already at the start, then go to previous segment
+            let currentStart = getCurrentSegmentStart()
+            
+            if abs(currentTime - currentStart) > 0.5 {
+                // If not at segment start, go to segment start
+                seekToTime(currentStart)
+            } else {
+                // If already at segment start, go to previous segment
+                if currentSegmentIndex > 0 {
+                    currentSegmentIndex -= 1
+                } else {
+                    // If at first segment, loop to last segment
+                    currentSegmentIndex = loopMarks.count - 2
+                }
+                seekToTime(getCurrentSegmentStart())
+            }
+            
+            // Reset the loop timer
+            resetLoopTimer()
+            
+            // Start playback again if we were playing
+            isPlaying = true
+            player.play()
         } else {
-            // If no previous mark, jump to the last mark (loop around)
-            if let lastMark = loopMarks.max() {
-                print("Looping to last mark at: \(lastMark)")
-                seekToTime(lastMark)
+            // Normal mark navigation when not in loop mode
+            if let prevMark = loopMarks.filter({ $0 < currentTime - 0.1 }).max() {
+                print("Found previous mark at: \(prevMark)")
+                seekToTime(prevMark)
+            } else {
+                // If no previous mark, jump to the last mark (loop around)
+                if let lastMark = loopMarks.max() {
+                    print("Looping to last mark at: \(lastMark)")
+                    seekToTime(lastMark)
+                }
             }
         }
     }
