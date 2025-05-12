@@ -70,7 +70,7 @@ class VideoControlBarViewModel: ObservableObject {
 
     func toggleSeekStepSize() {
         // Toggle between 1.0 and 5.0 seconds
-        seekStepSize = seekStepSize == 5.0 ? 1.0 : 5.0
+        seekStepSize = seekStepSize == 5.0 ? 0.5 : 5.0
     }
     
     /// Seek backward by fixed step size

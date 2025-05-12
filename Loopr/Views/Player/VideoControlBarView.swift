@@ -71,7 +71,7 @@ struct VideoControlBarView: View {
             Button {
                 viewModel.toggleSeekStepSize()
             } label: {
-                Text("\(Int(viewModel.seekStepSize))s")
+                Text(String(format: "%.1fs", viewModel.seekStepSize))
                     .font(.system(size: 14))
                     .frame(width: UI.seekButtonWidth, height: UI.buttonHeight)
                     .background(buttonBackgroundColor(for: .seekStepToggle))
