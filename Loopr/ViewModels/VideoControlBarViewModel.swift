@@ -41,6 +41,8 @@ class VideoControlBarViewModel: ObservableObject {
     init(player: AVPlayer, videoURL: URL? = nil) {
         self.player = player
         self.videoURL = videoURL
+        // Set isPlaying to false initially
+        self.isPlaying = false
         
         if let url = videoURL {
             loopMarks = VideoMarksManager.shared.getMarks(for: url)
@@ -52,7 +54,13 @@ class VideoControlBarViewModel: ObservableObject {
     /// Toggle between play and pause
     func togglePlayPause() {
         isPlaying.toggle()
-        isPlaying ? player.play() : player.pause()
+        
+        // Explicitly set player state based on isPlaying
+        if isPlaying {
+            player.play()
+        } else {
+            player.pause()
+        }
     }
     
     /// Seek to a specific time
@@ -249,27 +257,30 @@ class VideoControlBarViewModel: ObservableObject {
         // Save playback state
         let wasPlaying = isPlaying
         
+        // Always pause first
         if isPlaying {
             player.pause()
             isPlaying = false
         }
         
         if let index = findMarkNearCurrentTime() {
+            // Removing an existing mark
             loopMarks.remove(at: index)
+            
+            // Only restore playback if it was playing before
+            if wasPlaying {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.player.play()
+                    self.isPlaying = true
+                }
+            }
         } else {
+            // Adding a new mark - always stay paused
             addMarkAtCurrentTime()
         }
         
         updateCurrentSegmentIndex()
         saveMarks()
-        
-        // Restore playback if it was playing
-        if wasPlaying {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self.player.play()
-                self.isPlaying = true
-            }
-        }
     }
     
     /// Remove all marks

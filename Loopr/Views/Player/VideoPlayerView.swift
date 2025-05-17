@@ -183,14 +183,17 @@ struct VideoPlayerView: View {
                     self.player = player
                     self.viewModel.player = player
                     
+                    // Explicitly set the player to paused state initially
+                    player.pause()
+                    self.viewModel.isPlaying = false
+                    
                     // Load video metadata asynchronously
                     loadVideoMetadata(player: player)
                     
-                    // Start playback
+                    // Don't auto-play - let user press play first
                     // player.play()
                 }
             }
-            
             /// Load video metadata (duration, marks)
             private func loadVideoMetadata(player: AVPlayer) {
                 guard let asset = player.currentItem?.asset else { return }
