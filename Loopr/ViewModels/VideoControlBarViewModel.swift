@@ -139,111 +139,88 @@ class VideoControlBarViewModel: ObservableObject {
         seekToTime(newTime)
     }
 
-    /// Jump to next mark if available
-    func jumpToNextMark() {
-        print("Jump to next mark called")
+    private func jumpToMark(direction: Int) {
+        print("Jump to \(direction > 0 ? "next" : "previous") mark called")
         if isSeekInProgress { return }
         
-        // Always pause when seeking for better control
+        // Remember current playback state
         let wasPlaying = isPlaying
-        if isPlaying {
-            player.pause()
-            isPlaying = false
-        }
         
         if isLooping {
-            // In loop mode, jumping forward should go to the start of the next segment
-            if currentSegmentIndex < loopMarks.count - 2 {
-                currentSegmentIndex += 1
-                let segmentStart = getCurrentSegmentStart()
-                seekToTime(segmentStart)
+            if direction > 0 {
+                // Next logic: simply increment segment index
+                if currentSegmentIndex < loopMarks.count - 2 {
+                    currentSegmentIndex += 1
+                } else {
+                    currentSegmentIndex = 0  // Loop to first segment
+                }
             } else {
-                // If at the last segment, loop back to the first segment
-                currentSegmentIndex = 0
-                let segmentStart = getCurrentSegmentStart()
-                seekToTime(segmentStart)
+                // Previous logic: check if at start first
+                let currentStart = getCurrentSegmentStart()
+                
+                if abs(currentTime - currentStart) > 0.5 {
+                    // If not at segment start, go to segment start (don't change index)
+                } else {
+                    // If already at segment start, go to previous segment
+                    if currentSegmentIndex > 0 {
+                        currentSegmentIndex -= 1
+                    } else {
+                        currentSegmentIndex = loopMarks.count - 2  // Loop to last segment
+                    }
+                }
             }
             
-            // Reset the loop timer
+            // Common code for both directions in loop mode
+            seekToTime(getCurrentSegmentStart())
             resetLoopTimer()
             
-            // Restore playback state if we were playing and in loop mode
-            if wasPlaying && isLooping {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    self.player.play()
-                    self.isPlaying = true
+        } else {
+            // Normal mark navigation (non-loop mode)
+            let targetMark: Double?
+            
+            if direction > 0 {
+                // Find next mark
+                targetMark = loopMarks.first(where: { $0 > currentTime + 0.1 }) ?? loopMarks.min()
+                print("Found next mark at: \(String(describing: targetMark))")
+            } else {
+                // Find previous mark
+                targetMark = loopMarks.filter({ $0 < currentTime - 0.1 }).max() ?? loopMarks.max()
+                print("Found previous mark at: \(String(describing: targetMark))")
+            }
+            
+            // If found a target mark, seek to it
+            if let mark = targetMark {
+                if wasPlaying {
+                    player.pause()
+                    seekToTime(mark)
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        self.player.play()
+                        self.isPlaying = true
+                    }
+                } else {
+                    seekToTime(mark)
                 }
             }
-        } else {
-            // Normal mark navigation when not in loop mode
-            if let nextMark = loopMarks.first(where: { $0 > currentTime + 0.1 }) {
-                print("Found next mark at: \(nextMark)")
-                seekToTime(nextMark)
-            } else {
-                // If no next mark, jump to the first mark (loop around)
-                if let firstMark = loopMarks.min() {
-                    print("Looping to first mark at: \(firstMark)")
-                    seekToTime(firstMark)
-                }
+        }
+        
+        // Restore playback for loop mode (handled inside the else block for normal mode)
+        if isLooping && wasPlaying {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                self.player.play()
+                self.isPlaying = true
             }
         }
     }
 
-    /// Jump to previous mark if available
-    func jumpToPreviousMark() {
-        print("Jump to previous mark called")
-        if isSeekInProgress { return }
-        
-        // Always pause when seeking for better control
-        let wasPlaying = isPlaying
-        if isPlaying {
-            player.pause()
-            isPlaying = false
-        }
-        
-        if isLooping {
-            // In loop mode, jumping backward should go to the start of the current segment first
-            // If already at the start, then go to previous segment
-            let currentStart = getCurrentSegmentStart()
-            
-            if abs(currentTime - currentStart) > 0.5 {
-                // If not at segment start, go to segment start
-                seekToTime(currentStart)
-            } else {
-                // If already at segment start, go to previous segment
-                if currentSegmentIndex > 0 {
-                    currentSegmentIndex -= 1
-                } else {
-                    // If at first segment, loop to last segment
-                    currentSegmentIndex = loopMarks.count - 2
-                }
-                seekToTime(getCurrentSegmentStart())
-            }
-            
-            // Reset the loop timer
-            resetLoopTimer()
-            
-            // Restore playback state if we were playing and in loop mode
-            if wasPlaying && isLooping {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    self.player.play()
-                    self.isPlaying = true
-                }
-            }
-        } else {
-            // Normal mark navigation when not in loop mode
-            if let prevMark = loopMarks.filter({ $0 < currentTime - 0.1 }).max() {
-                print("Found previous mark at: \(prevMark)")
-                seekToTime(prevMark)
-            } else {
-                // If no previous mark, jump to the last mark (loop around)
-                if let lastMark = loopMarks.max() {
-                    print("Looping to last mark at: \(lastMark)")
-                    seekToTime(lastMark)
-                }
-            }
-        }
+    func jumpToNextMark() {
+        jumpToMark(direction: 1)
     }
+
+    func jumpToPreviousMark() {
+        jumpToMark(direction: -1)
+    }
+
 
     /// Find the nearest mark between two time points
     private func findNearestMarkBetween(start: Double, end: Double) -> Double? {
@@ -443,13 +420,10 @@ class VideoControlBarViewModel: ObservableObject {
             }
         }
         
-        if isPlaying {
-            if !isLooping {
-                checkForMarksInPlayback()
-            } else {
-                handleLoopBoundaries()
-                updateLoopTimer()
-            }
+        // Only handle loop boundaries if we're in loop mode
+        if isPlaying && isLooping {
+            handleLoopBoundaries()
+            updateLoopTimer()
         }
     }
     
@@ -649,12 +623,19 @@ class VideoControlBarViewModel: ObservableObject {
         let segmentStart = getCurrentSegmentStart()
         let segmentEnd = getCurrentSegmentEnd()
         
-        // Check for out-of-bounds in both directions
-        if currentTime >= segmentEnd || currentTime < segmentStart {
-            // Use our seekToTime method which handles state properly
+        // Check if we've reached the end of the current segment
+        if currentTime >= segmentEnd {
+            print("Reached segment end, looping back to start of segment")
+            
+            // Simply seek back to the start of the CURRENT segment (not advancing)
             seekToTime(segmentStart)
             
-            // We'll resume playing in the seekToTime completion handler
+            // Note: The loop timer continues to run independently and will
+            // trigger segment advancement when it expires
+        }
+        // If we're before the segment start (e.g., user scrubbed back), jump to segment start
+        else if currentTime < segmentStart {
+            seekToTime(segmentStart)
         }
     }
     
@@ -663,6 +644,7 @@ class VideoControlBarViewModel: ObservableObject {
             loopTimeRemaining -= 0.5
             
             if loopTimeRemaining <= 0 {
+                print("Loop timer expired, advancing to next segment")
                 let wasPlaying = isPlaying
                 
                 if isPlaying {
@@ -670,21 +652,25 @@ class VideoControlBarViewModel: ObservableObject {
                     isPlaying = false
                 }
                 
+                // Advance to the next segment when timer expires
                 if currentSegmentIndex < loopMarks.count - 2 {
                     currentSegmentIndex += 1
-                    moveToCurrentSegment()
-                    
-                    // Resume playback after moving to new segment
-                    if wasPlaying {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                            self.player.play()
-                            self.isPlaying = true
-                        }
-                    }
                 } else {
-                    loopTimerActive = false
+                    currentSegmentIndex = 0  // Loop back to first segment
                 }
                 
+                // Move to the new segment
+                moveToCurrentSegment()
+                
+                // Resume playback
+                if wasPlaying {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        self.player.play()
+                        self.isPlaying = true
+                    }
+                }
+                
+                // Reset timer for the new segment
                 resetLoopTimer()
             }
         }
