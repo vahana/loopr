@@ -45,9 +45,6 @@ class VideoControlBarViewModel: ObservableObject {
         if let url = videoURL {
             loopMarks = VideoMarksManager.shared.getMarks(for: url)
         }
-        
-        // New: Setup dynamic thresholds based on video properties
-        setupDynamicThresholds()
     }
     
     // MARK: - Playback Controls
@@ -78,28 +75,17 @@ class VideoControlBarViewModel: ObservableObject {
                 
                 // Calculate bounded time
                 let boundedTime = max(0, min(self.duration, time))
+                print("Seeking to time: \(boundedTime)")
                 
-                // Get frame rate for better tolerance setting
-                let frameRate = self.player.currentItem?.asset.tracks(withMediaType: .video).first?.nominalFrameRate ?? 30
-                let frameDuration = 1.0 / Double(frameRate)
-                
-                // Round to nearest frame boundary
-                let frameAlignedTime = round(boundedTime / frameDuration) * frameDuration
-                
-                print("Seeking to time: \(frameAlignedTime)")
-                
-                // Set tolerances based on frame duration
-                let tolerance = CMTime(seconds: frameDuration/2, preferredTimescale: 600)
-                
-                // Execute seek with proper tolerances
-                let seekTime = CMTime(seconds: frameAlignedTime, preferredTimescale: 600)
-                self.player.seek(to: seekTime, toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] finished in
+                // Execute seek
+                let seekTime = CMTime(seconds: boundedTime, preferredTimescale: 600)
+                self.player.seek(to: seekTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
                     guard let self = self else { return }
                     
                     DispatchQueue.main.async {
                         // Only update the time if seek completed successfully
                         if finished {
-                            self.currentTime = frameAlignedTime
+                            self.currentTime = boundedTime
                             
                             // Resume playback if it was playing before
                             if self.wasPlayingBeforeSeek && self.isLooping {
@@ -451,12 +437,9 @@ class VideoControlBarViewModel: ObservableObject {
         // Update current time from player
         let playerTime = CMTimeGetSeconds(player.currentTime())
         if !playerTime.isNaN && playerTime.isFinite {
-            // Round to a reasonable precision to avoid floating point errors
-            let roundedTime = round(playerTime * 1000) / 1000  // Round to milliseconds
-            
             // Only update if not currently seeking
             if !isSeekInProgress {
-                currentTime = roundedTime
+                currentTime = playerTime
             }
         }
         
@@ -511,25 +494,87 @@ class VideoControlBarViewModel: ObservableObject {
         return "[\(currentSegmentIndex + 1)/\(max(1, loopMarks.count - 1))]"
     }
     
+    // Add to VideoControlBarViewModel properties
+    @Published var markFinetuneStepSize: Double = 0.25
+
+    // Add these methods to VideoControlBarViewModel
+    func finetuneMarkLeft() {
+        if isSeekInProgress { return }
+        
+        if let index = findMarkNearCurrentTime() {
+            // Save playback state
+            let wasPlaying = isPlaying
+            
+            if isPlaying {
+                player.pause()
+                isPlaying = false
+            }
+            
+            // Move mark left by the finetune step size
+            loopMarks[index] = max(0, loopMarks[index] - markFinetuneStepSize)
+            
+            // Sort and save marks
+            loopMarks.sort()
+            saveMarks()
+            
+            // Seek to the adjusted mark
+            seekToTime(loopMarks[index])
+            
+            // Restore playback if it was playing
+            if wasPlaying {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.player.play()
+                    self.isPlaying = true
+                }
+            }
+        }
+    }
+
+    func finetuneMarkRight() {
+        if isSeekInProgress { return }
+        
+        if let index = findMarkNearCurrentTime() {
+            // Save playback state
+            let wasPlaying = isPlaying
+            
+            if isPlaying {
+                player.pause()
+                isPlaying = false
+            }
+            
+            // Move mark right by the finetune step size
+            loopMarks[index] = min(duration, loopMarks[index] + markFinetuneStepSize)
+            
+            // Sort and save marks
+            loopMarks.sort()
+            saveMarks()
+            
+            // Seek to the adjusted mark
+            seekToTime(loopMarks[index])
+            
+            // Restore playback if it was playing
+            if wasPlaying {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.player.play()
+                    self.isPlaying = true
+                }
+            }
+        }
+    }
+
+    func findMarkNearCurrentTime() -> Int? {
+        return loopMarks.firstIndex(where: { abs($0 - currentTime) < markProximityThreshold })
+    }
+
     // MARK: - Private Methods
     
     private var hasValidSegments: Bool {
         return loopMarks.count >= 2 && currentSegmentIndex < loopMarks.count - 1
     }
     
-    private func findMarkNearCurrentTime() -> Int? {
-        return loopMarks.firstIndex(where: { abs($0 - currentTime) < markProximityThreshold })
-    }
         
     private func addMarkAtCurrentTime() {
-        // Round to nearest frame boundary based on video frame rate
-        let frameRate = player.currentItem?.asset.tracks(withMediaType: .video).first?.nominalFrameRate ?? 30
-        let frameDuration = 1.0 / Double(frameRate)
-        
-        // Round to nearest frame
-        let frameAlignedTime = round(currentTime / frameDuration) * frameDuration
-        
-        loopMarks.append(frameAlignedTime)
+        loopMarks.append(currentTime)
         loopMarks.sort()
     }
     
@@ -549,12 +594,7 @@ class VideoControlBarViewModel: ObservableObject {
         
         let segmentStart = getCurrentSegmentStart()
         
-        // Use frame duration as minimum threshold
-        let frameRate = player.currentItem?.asset.tracks(withMediaType: .video).first?.nominalFrameRate ?? 30
-        let frameDuration = 1.0 / Double(frameRate)
-        
-        // Only seek if we're at least one frame away
-        if abs(currentTime - segmentStart) >= frameDuration {
+        if abs(currentTime - segmentStart) >= 0.1 {
             seekToTime(segmentStart)
         }
     }
@@ -609,11 +649,8 @@ class VideoControlBarViewModel: ObservableObject {
         let segmentStart = getCurrentSegmentStart()
         let segmentEnd = getCurrentSegmentEnd()
         
-        // Add small epsilon to avoid boundary edge cases
-        let epsilon = 0.03  // ~1 frame at 30fps
-        
-        // Check for out-of-bounds in both directions with margin
-        if currentTime >= (segmentEnd - epsilon) || currentTime < (segmentStart + epsilon) {
+        // Check for out-of-bounds in both directions
+        if currentTime >= segmentEnd || currentTime < segmentStart {
             // Use our seekToTime method which handles state properly
             seekToTime(segmentStart)
             
@@ -650,34 +687,6 @@ class VideoControlBarViewModel: ObservableObject {
                 
                 resetLoopTimer()
             }
-        }
-    }
-    
-    // New method to setup dynamic thresholds based on video
-    private func setupDynamicThresholds() {
-        // Wait for player item to be ready before getting frame rate
-        let notificationCenter = NotificationCenter.default
-        notificationCenter.addObserver(
-            forName: .AVPlayerItemNewAccessLogEntry,
-            object: player.currentItem,
-            queue: nil
-        ) { [weak self] _ in
-            self?.updateThresholdsFromVideo()
-        }
-        
-        // Set initial thresholds based on default values
-        updateThresholdsFromVideo()
-    }
-    
-    private func updateThresholdsFromVideo() {
-        if let frameRate = player.currentItem?.asset.tracks(withMediaType: .video).first?.nominalFrameRate {
-            let frameDuration = 1.0 / Double(frameRate)
-            
-            // Set thresholds relative to frame duration
-            markProximityThreshold = max(0.25, frameDuration * 2)  // At least 2 frames
-            playbackMarkThreshold = max(0.1, frameDuration)        // At least 1 frame
-            
-            print("Video frame rate: \(frameRate)fps, thresholds updated")
         }
     }
 }

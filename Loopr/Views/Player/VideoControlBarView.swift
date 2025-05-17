@@ -49,6 +49,7 @@ struct VideoControlBarView: View {
         }
     }
     
+    
     // MARK: - UI Components
     
     /// Transport controls (rewind/forward)
@@ -94,26 +95,7 @@ struct VideoControlBarView: View {
             .focused($focusedControl, equals: .seekForward)
         }
     }
-    
-    /// Loop controls (mark/loop toggle)
-    private var loopControls: some View {
-        HStack(spacing: UI.controlSpacing) {
-            controlButton(
-                for: .addMark,
-                icon: "bookmark.fill",
-                action: viewModel.toggleMark
-            )
-            
-            controlButton(
-                for: .toggleLoop,
-                icon: "repeat",
-                action: viewModel.toggleLoop,
-                activeColor: viewModel.isLooping ? .green.opacity(0.7) : nil,
-                isDisabled: viewModel.loopMarks.count < 2
-            )
-        }
-    }
-    
+        
     /// Loop status indicators
     private var loopIndicators: some View {
         Group {
@@ -133,6 +115,43 @@ struct VideoControlBarView: View {
                 .background(Color.black.opacity(0.5))
                 .cornerRadius(4)
             }
+        }
+    }
+    
+    /// Loop controls (mark/loop toggle)
+    private var loopControls: some View {
+        HStack(spacing: UI.controlSpacing) {
+            controlButton(
+                for: .addMark,
+                icon: "bookmark.fill",
+                action: viewModel.toggleMark
+            )
+            
+            // Add fine-tune left button
+            controlButton(
+                for: .fineTuneLeft,
+                icon: "chevron.left",
+                width: UI.controlButtonWidth * 0.8,
+                action: viewModel.finetuneMarkLeft,
+                isDisabled: viewModel.findMarkNearCurrentTime() == nil
+            )
+            
+            // Add fine-tune right button
+            controlButton(
+                for: .fineTuneRight,
+                icon: "chevron.right",
+                width: UI.controlButtonWidth * 0.8,
+                action: viewModel.finetuneMarkRight,
+                isDisabled: viewModel.findMarkNearCurrentTime() == nil
+            )
+            
+            controlButton(
+                for: .toggleLoop,
+                icon: "repeat",
+                action: viewModel.toggleLoop,
+                activeColor: viewModel.isLooping ? .green.opacity(0.7) : nil,
+                isDisabled: viewModel.loopMarks.count < 2
+            )
         }
     }
     
@@ -273,4 +292,5 @@ enum VideoControlFocus: Int {
     case addMark, toggleLoop
     case startTimer, clearMarks
     case seekStepToggle
+    case fineTuneLeft, fineTuneRight
 }
