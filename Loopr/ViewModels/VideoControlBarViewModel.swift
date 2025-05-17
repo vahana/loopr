@@ -3,11 +3,17 @@ import AVKit
 
 /// ViewModel for video control functionality
 class VideoControlBarViewModel: ObservableObject {
+    // MARK: - Step Size Configuration
+    private struct SeekStepSizes {
+        static let options: [Double] = [0.5, 5.0, 30.0]
+        static let defaultIndex: Int = 1  // Index for 5.0
+    }
+    
     // MARK: - Published Properties
     @Published var isPlaying = true
     @Published var currentTime: Double = 0
     @Published var duration: Double = 0
-    @Published var seekStepSize: Double = 5.0  // Fixed 5-second seek increment
+    @Published var seekStepSize: Double = SeekStepSizes.options[SeekStepSizes.defaultIndex]
     @Published var loopMarks: [Double] = []
     @Published var currentSegmentIndex: Int = 0
     @Published var isLooping = false
@@ -15,6 +21,9 @@ class VideoControlBarViewModel: ObservableObject {
     @Published var isTimerRunning = false
     @Published var loopTimerActive: Bool = false
     @Published var loopTimeRemaining: Double = 30.0
+    
+    // Track the current index in the step size options
+    private var currentStepSizeIndex: Int = SeekStepSizes.defaultIndex
     
     // MARK: - Properties
     var player: AVPlayer
@@ -25,6 +34,8 @@ class VideoControlBarViewModel: ObservableObject {
     private var isSeekInProgress = false  // Flag to prevent overlapping seeks
     private var markProximityThreshold = 0.5  // How close to consider a mark
     private var playbackMarkThreshold = 0.2  // How close to pause at mark during playback
+    private var wasPlayingBeforeSeek = false  // Track playback state before seeking
+    private var seekQueue = DispatchQueue(label: "com.loopr.seekQueue")
     
     // MARK: - Initialization
     init(player: AVPlayer, videoURL: URL? = nil) {
@@ -46,55 +57,95 @@ class VideoControlBarViewModel: ObservableObject {
     
     /// Seek to a specific time
     func seekToTime(_ time: Double) {
-        // Always pause when seeking
-        if isPlaying {
-            player.pause()
-            isPlaying = false
-        }
-        
-        // Calculate bounded time
-        let boundedTime = max(0, min(duration, time))
-        print("Seeking to time: \(boundedTime)")
-        
-        // Execute seek
-        let seekTime = CMTime(seconds: boundedTime, preferredTimescale: 600)
-        player.seek(to: seekTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+        // Use a dispatch queue to serialize seek operations
+        seekQueue.async { [weak self] in
             guard let self = self else { return }
             
-            // Only update the time if seek completed successfully
-            if finished {
-                self.currentTime = boundedTime
+            // Set the flag to prevent overlapping seeks
+            self.isSeekInProgress = true
+            
+            // Remember playback state
+            self.wasPlayingBeforeSeek = self.isPlaying
+            
+            // Pause temporarily for better seeking accuracy
+            DispatchQueue.main.async {
+                if self.isPlaying {
+                    self.player.pause()
+                }
+                
+                // Calculate bounded time
+                let boundedTime = max(0, min(self.duration, time))
+                print("Seeking to time: \(boundedTime)")
+                
+                // Execute seek
+                let seekTime = CMTime(seconds: boundedTime, preferredTimescale: 600)
+                self.player.seek(to: seekTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+                    guard let self = self else { return }
+                    
+                    DispatchQueue.main.async {
+                        // Only update the time if seek completed successfully
+                        if finished {
+                            self.currentTime = boundedTime
+                            
+                            // Resume playback if it was playing before
+                            if self.wasPlayingBeforeSeek && self.isLooping {
+                                self.player.play()
+                                self.isPlaying = true
+                            }
+                        }
+                        
+                        // Clear flag when seek is complete
+                        self.isSeekInProgress = false
+                    }
+                }
             }
         }
     }
 
     func toggleSeekStepSize() {
-        // Toggle between 1.0 and 5.0 seconds
-        seekStepSize = seekStepSize == 5.0 ? 0.5 : 5.0
+        // Cycle to the next step size in the options array
+        currentStepSizeIndex = (currentStepSizeIndex + 1) % SeekStepSizes.options.count
+        seekStepSize = SeekStepSizes.options[currentStepSizeIndex]
     }
     
-    /// Seek backward by fixed step size
+    /// Format the seek step size for display
+    func formatSeekStepSize() -> String {
+        // If the value is a whole number, display as integer
+        if seekStepSize.truncatingRemainder(dividingBy: 1) == 0 {
+            return "\(Int(seekStepSize))s"
+        } else {
+            // For decimal values, show one decimal place
+            return String(format: "%.1fs", seekStepSize)
+        }
+    }
+    
+    /// Seek backward by current step size
     func seekBackward() {
         print("Seek backward called")
+        if isSeekInProgress { return }
+        
         // Simple fixed seek - no mark detection
         let newTime = max(0, currentTime - seekStepSize)
         seekToTime(newTime)
     }
 
-    /// Seek forward by fixed step size
+    /// Seek forward by current step size
     func seekForward() {
         print("Seek forward called")
+        if isSeekInProgress { return }
+        
         // Simple fixed seek - no mark detection
         let newTime = min(duration, currentTime + seekStepSize)
         seekToTime(newTime)
     }
 
-    /// Jump to next mark if availablea
-    ///
+    /// Jump to next mark if available
     func jumpToNextMark() {
         print("Jump to next mark called")
+        if isSeekInProgress { return }
         
-        // Always pause when seeking during loop mode
+        // Always pause when seeking for better control
+        let wasPlaying = isPlaying
         if isPlaying {
             player.pause()
             isPlaying = false
@@ -116,7 +167,13 @@ class VideoControlBarViewModel: ObservableObject {
             // Reset the loop timer
             resetLoopTimer()
             
-            // Keep video paused in loop mode when navigating with mark jumps
+            // Restore playback state if we were playing and in loop mode
+            if wasPlaying && isLooping {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    self.player.play()
+                    self.isPlaying = true
+                }
+            }
         } else {
             // Normal mark navigation when not in loop mode
             if let nextMark = loopMarks.first(where: { $0 > currentTime + 0.1 }) {
@@ -135,8 +192,10 @@ class VideoControlBarViewModel: ObservableObject {
     /// Jump to previous mark if available
     func jumpToPreviousMark() {
         print("Jump to previous mark called")
+        if isSeekInProgress { return }
         
-        // Always pause when seeking during loop mode
+        // Always pause when seeking for better control
+        let wasPlaying = isPlaying
         if isPlaying {
             player.pause()
             isPlaying = false
@@ -164,7 +223,13 @@ class VideoControlBarViewModel: ObservableObject {
             // Reset the loop timer
             resetLoopTimer()
             
-            // Keep video paused in loop mode when navigating with mark jumps
+            // Restore playback state if we were playing and in loop mode
+            if wasPlaying && isLooping {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    self.player.play()
+                    self.isPlaying = true
+                }
+            }
         } else {
             // Normal mark navigation when not in loop mode
             if let prevMark = loopMarks.filter({ $0 < currentTime - 0.1 }).max() {
@@ -181,7 +246,6 @@ class VideoControlBarViewModel: ObservableObject {
     }
 
     /// Find the nearest mark between two time points
-    ///
     private func findNearestMarkBetween(start: Double, end: Double) -> Double? {
         // Ensure start is less than end
         let (lower, upper) = start < end ? (start, end) : (end, start)
@@ -203,6 +267,11 @@ class VideoControlBarViewModel: ObservableObject {
     
     /// Add a mark at current time or remove if already present
     func toggleMark() {
+        if isSeekInProgress { return }
+        
+        // Save playback state
+        let wasPlaying = isPlaying
+        
         if isPlaying {
             player.pause()
             isPlaying = false
@@ -216,10 +285,23 @@ class VideoControlBarViewModel: ObservableObject {
         
         updateCurrentSegmentIndex()
         saveMarks()
+        
+        // Restore playback if it was playing
+        if wasPlaying {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.player.play()
+                self.isPlaying = true
+            }
+        }
     }
     
     /// Remove all marks
     func clearMarks() {
+        if isSeekInProgress { return }
+        
+        // Save playback state
+        let wasPlaying = isPlaying
+        
         if isPlaying {
             player.pause()
             isPlaying = false
@@ -233,12 +315,22 @@ class VideoControlBarViewModel: ObservableObject {
         if let url = videoURL {
             VideoMarksManager.shared.clearMarks(for: url)
         }
+        
+        // Restore playback if it was playing
+        if wasPlaying {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.player.play()
+                self.isPlaying = true
+            }
+        }
     }
         
     // MARK: - Loop Controls
     
     /// Toggle looping mode
     func toggleLoop() {
+        if isSeekInProgress { return }
+        
         guard loopMarks.count >= 2 else {
             isLooping = false
             return
@@ -259,7 +351,12 @@ class VideoControlBarViewModel: ObservableObject {
     
     /// Move to next segment
     func nextSegment() {
-        guard loopMarks.count >= 2 && !isSeekInProgress else { return }
+        if isSeekInProgress { return }
+        
+        guard loopMarks.count >= 2 else { return }
+        
+        // Save playback state
+        let wasPlaying = isPlaying
         
         if isPlaying {
             player.pause()
@@ -274,11 +371,24 @@ class VideoControlBarViewModel: ObservableObject {
         
         resetLoopTimer()
         moveToCurrentSegment()
+        
+        // Restore playback if it was playing and we're in loop mode
+        if wasPlaying && isLooping {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                self.player.play()
+                self.isPlaying = true
+            }
+        }
     }
     
     /// Move to previous segment
     func previousSegment() {
-        guard loopMarks.count >= 2 && !isSeekInProgress else { return }
+        if isSeekInProgress { return }
+        
+        guard loopMarks.count >= 2 else { return }
+        
+        // Save playback state
+        let wasPlaying = isPlaying
         
         if isPlaying {
             player.pause()
@@ -293,6 +403,14 @@ class VideoControlBarViewModel: ObservableObject {
         
         resetLoopTimer()
         moveToCurrentSegment()
+        
+        // Restore playback if it was playing and we're in loop mode
+        if wasPlaying && isLooping {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                self.player.play()
+                self.isPlaying = true
+            }
+        }
     }
     
     // MARK: - Timer Controls
@@ -314,12 +432,15 @@ class VideoControlBarViewModel: ObservableObject {
     /// Update player state when called by timer
     func updatePlayerState() {
         // Skip updates during seeking
-        guard !isSeekInProgress else { return }
+        if isSeekInProgress { return }
         
         // Update current time from player
         let playerTime = CMTimeGetSeconds(player.currentTime())
         if !playerTime.isNaN && playerTime.isFinite {
-            currentTime = playerTime
+            // Only update if not currently seeking
+            if !isSeekInProgress {
+                currentTime = playerTime
+            }
         }
         
         if isPlaying {
@@ -431,25 +552,40 @@ class VideoControlBarViewModel: ObservableObject {
     }
     
     private func checkForMarksInPlayback() {
+        // Skip if already seeking
+        if isSeekInProgress { return }
+        
         for mark in loopMarks {
             if abs(currentTime - mark) < playbackMarkThreshold && currentTime > mark {
+                let wasPlaying = isPlaying
+                
                 if isPlaying {
                     player.pause()
                     isPlaying = false
                 }
-                player.seek(to: CMTime(seconds: mark, preferredTimescale: 600))
-                currentTime = mark
+                
+                // Use seekToTime to ensure proper state management
+                seekToTime(mark)
+                
+                // Don't automatically resume - let the user decide
                 break
             }
         }
     }
     
     private func handleLoopBoundaries() {
+        // Skip if already seeking
+        if isSeekInProgress { return }
+        
         let segmentStart = getCurrentSegmentStart()
         let segmentEnd = getCurrentSegmentEnd()
         
-        if currentTime >= segmentEnd {
-            player.seek(to: CMTime(seconds: segmentStart, preferredTimescale: 600))
+        // Check for out-of-bounds in both directions
+        if currentTime >= segmentEnd || currentTime < segmentStart {
+            // Use our seekToTime method which handles state properly
+            seekToTime(segmentStart)
+            
+            // We'll resume playing in the seekToTime completion handler
         }
     }
     
@@ -458,6 +594,8 @@ class VideoControlBarViewModel: ObservableObject {
             loopTimeRemaining -= 0.5
             
             if loopTimeRemaining <= 0 {
+                let wasPlaying = isPlaying
+                
                 if isPlaying {
                     player.pause()
                     isPlaying = false
@@ -466,6 +604,14 @@ class VideoControlBarViewModel: ObservableObject {
                 if currentSegmentIndex < loopMarks.count - 2 {
                     currentSegmentIndex += 1
                     moveToCurrentSegment()
+                    
+                    // Resume playback after moving to new segment
+                    if wasPlaying {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            self.player.play()
+                            self.isPlaying = true
+                        }
+                    }
                 } else {
                     loopTimerActive = false
                 }

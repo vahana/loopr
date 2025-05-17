@@ -1,7 +1,6 @@
 import SwiftUI
 import AVKit
 
-/// Progress bar for video player with mark indicators
 struct VideoProgressBarView: View {
     // MARK: - Properties
     @ObservedObject var viewModel: VideoControlBarViewModel

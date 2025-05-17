@@ -71,7 +71,7 @@ struct VideoControlBarView: View {
             Button {
                 viewModel.toggleSeekStepSize()
             } label: {
-                Text(String(format: "%.1fs", viewModel.seekStepSize))
+                Text(viewModel.formatSeekStepSize())
                     .font(.system(size: 14))
                     .frame(width: UI.seekButtonWidth, height: UI.buttonHeight)
                     .background(buttonBackgroundColor(for: .seekStepToggle))
@@ -222,45 +222,45 @@ struct VideoControlBarView: View {
         return String(format: "%02d:%02d", minutes, secs)
     }
     
-    /// Handle button click with double-click detection for tvOS
+    /// Handle button click with simplified double-click detection for tvOS
     private func handleButtonClick(_ control: VideoControlFocus) {
         let now = Date()
         
         // Check if this is a double-click
         if let lastTime = lastClickTime[control],
            now.timeIntervalSince(lastTime) < UI.doubleClickThreshold {
-            // Double-click detected
+            // Double-click detected - perform immediately
             print("Double-click detected for \(control)")
             lastClickTime[control] = nil // Reset
             
             // Execute double-click action
-            if control == .seekBackward {
+            switch control {
+            case .seekBackward:
                 viewModel.jumpToPreviousMark()
-            } else if control == .seekForward {
+            case .seekForward:
                 viewModel.jumpToNextMark()
+            default:
+                break
             }
         } else {
             // First click - store time
             lastClickTime[control] = now
             
-            // Execute single-click action after a short delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                // Only execute if not a double-click
-                if let clickTime = self.lastClickTime[control],
-                   clickTime == now { // Same timestamp means no second click has happened
-                    DispatchQueue.main.asyncAfter(deadline: .now() + UI.doubleClickThreshold) {
-                        // Check again if the timestamp is still the same
-                        if self.lastClickTime[control] == now {
-                            print("Single-click action for \(control)")
-                            // Execute single-click action
-                            if control == .seekBackward {
-                                self.viewModel.seekBackward()
-                            } else if control == .seekForward {
-                                self.viewModel.seekForward()
-                            }
-                            self.lastClickTime[control] = nil // Reset
-                        }
+            // Use a simple timer to differentiate single vs double clicks
+            DispatchQueue.main.asyncAfter(deadline: .now() + UI.doubleClickThreshold) {
+                // If the timestamp is still the same, no second click happened
+                if self.lastClickTime[control] == now {
+                    // Execute single-click action
+                    print("Single-click action for \(control)")
+                    switch control {
+                    case .seekBackward:
+                        self.viewModel.seekBackward()
+                    case .seekForward:
+                        self.viewModel.seekForward()
+                    default:
+                        break
                     }
+                    self.lastClickTime[control] = nil // Reset
                 }
             }
         }
