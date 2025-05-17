@@ -222,7 +222,15 @@ struct VideoPlayerView: View {
             /// Initialize default marks at start and end if none exist
             private func setupDefaultMarksIfNeeded(duration: Double) {
                 if viewModel.loopMarks.isEmpty {
-                    viewModel.loopMarks = [0, duration]
+                    // Get frame rate for better precision
+                    let frameRate = player.currentItem?.asset.tracks(withMediaType: .video).first?.nominalFrameRate ?? 30
+                    let frameDuration = 1.0 / Double(frameRate)
+                    
+                    // Round duration to frame boundary
+                    let roundedDuration = floor(duration / frameDuration) * frameDuration
+                    
+                    // Set marks at exact frame boundaries
+                    viewModel.loopMarks = [0, roundedDuration]
                 }
             }
             
