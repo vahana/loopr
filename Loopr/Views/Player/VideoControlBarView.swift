@@ -127,22 +127,22 @@ struct VideoControlBarView: View {
                 action: viewModel.toggleMark
             )
             
-            // Add fine-tune left button
+            // Fine-tune left button - smaller size in both dimensions
             controlButton(
                 for: .fineTuneLeft,
                 icon: "chevron.left",
-                width: UI.controlButtonWidth * 0.8,
-                action: viewModel.finetuneMarkLeft,
-                isDisabled: viewModel.findMarkNearCurrentTime() == nil
+                width: 30,
+                height: 28,
+                action: viewModel.finetuneMarkLeft
             )
             
-            // Add fine-tune right button
+            // Fine-tune right button - smaller size in both dimensions
             controlButton(
                 for: .fineTuneRight,
                 icon: "chevron.right",
-                width: UI.controlButtonWidth * 0.8,
-                action: viewModel.finetuneMarkRight,
-                isDisabled: viewModel.findMarkNearCurrentTime() == nil
+                width: 30,
+                height: 28,
+                action: viewModel.finetuneMarkRight
             )
             
             controlButton(
@@ -206,25 +206,37 @@ struct VideoControlBarView: View {
     
     // MARK: - Helper Methods
     
+    private var isOnMark: Bool {
+        return viewModel.findMarkNearCurrentTime() != nil
+    }
+    
     /// Create a standard control button
     private func controlButton(
         for focus: VideoControlFocus,
         icon: String,
         width: CGFloat = UI.controlButtonWidth,
+        height: CGFloat = UI.buttonHeight,
         action: @escaping () -> Void,
         activeColor: Color? = nil,
         isDisabled: Bool = false
     ) -> some View {
-        Button(action: action) {
+        let isFinetuneButton = focus == .fineTuneLeft || focus == .fineTuneRight
+        
+        return Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: 20))
-                .frame(width: width, height: UI.buttonHeight)
-                .background(buttonBackgroundColor(for: focus, activeColor: activeColor))
+                .font(.system(size: isFinetuneButton ? 14 : 20))
+                .frame(width: width, height: height)
+                .background(
+                    isFinetuneButton ?
+                        (isOnMark ? Color.black.opacity(0.7) : Color.gray.opacity(0.3)) :
+                        buttonBackgroundColor(for: focus, activeColor: activeColor)
+                )
                 .cornerRadius(UI.cornerRadius)
+                .opacity(isFinetuneButton && !isOnMark ? 0.5 : 1.0)
         }
         .buttonStyle(.card)  // Important for tvOS
         .focused($focusedControl, equals: focus)
-        .disabled(isDisabled)
+        .disabled(isFinetuneButton ? !isOnMark : isDisabled)
     }
     
     /// Get background color for a button based on focus state
