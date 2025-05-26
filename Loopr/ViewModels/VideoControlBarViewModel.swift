@@ -37,6 +37,10 @@ class VideoControlBarViewModel: ObservableObject {
     private var wasPlayingBeforeSeek = false  // Track playback state before seeking
     private var seekQueue = DispatchQueue(label: "com.loopr.seekQueue")
     
+    // FIX: Add debounce properties
+    private var lastLoopSeekTime: Double = 0
+    private let loopSeekDebounceInterval: Double = 1.0
+    
     // MARK: - Initialization
     init(player: AVPlayer, videoURL: URL? = nil) {
         self.player = player
@@ -627,16 +631,24 @@ class VideoControlBarViewModel: ObservableObject {
         }
     }
     
+    // FIX: Updated handleLoopBoundaries with debounce
     private func handleLoopBoundaries() {
         // Skip if already seeking
         if isSeekInProgress { return }
         
         let segmentStart = getCurrentSegmentStart()
         let segmentEnd = getCurrentSegmentEnd()
+        let now = Date().timeIntervalSince1970
         
         // Check if we've reached the end of the current segment
         if currentTime >= segmentEnd {
+            // Add debounce check
+            if now - lastLoopSeekTime < loopSeekDebounceInterval {
+                return
+            }
+            
             print("Reached segment end, looping back to start of segment")
+            lastLoopSeekTime = now
             
             // Simply seek back to the start of the CURRENT segment (not advancing)
             seekToTime(segmentStart)
@@ -646,6 +658,12 @@ class VideoControlBarViewModel: ObservableObject {
         }
         // If we're before the segment start (e.g., user scrubbed back), jump to segment start
         else if currentTime < segmentStart {
+            // Add debounce check here too
+            if now - lastLoopSeekTime < loopSeekDebounceInterval {
+                return
+            }
+            
+            lastLoopSeekTime = now
             seekToTime(segmentStart)
         }
     }
