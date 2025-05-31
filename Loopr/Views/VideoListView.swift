@@ -6,6 +6,8 @@ struct VideoListView: View {
     @State private var localVideos: [Video] = []
     @State private var isLoading = true
     
+    private let migrationKey = "videoDataMigrated_v1"
+    
     var body: some View {
         VStack {
             if isLoading {
@@ -45,6 +47,8 @@ struct VideoListView: View {
             }
         }
         .onAppear {
+            // TODO: REMOVE THIS Add this line in ContentView.onAppear temporarily
+            UserDefaults.standard.removeObject(forKey: "videoDataMigrated_v1")
             loadVideoLibrary()
         }
     }
@@ -57,8 +61,11 @@ struct VideoListView: View {
             
             print("Cache directory: \(cacheManager.cacheDirectory.path)")
             
-            // First, migrate old cached files
-            self.migrateCachedFiles()
+            // First, migrate old cached files (only once)
+            if self.shouldRunMigration() {
+                self.migrateCachedFiles()
+                self.markMigrationComplete()
+            }
             
             var videos: [Video] = []
             
@@ -129,6 +136,14 @@ struct VideoListView: View {
         }
     }
     
+    private func shouldRunMigration() -> Bool {
+        return !UserDefaults.standard.bool(forKey: migrationKey)
+    }
+    
+    private func markMigrationComplete() {
+        UserDefaults.standard.set(true, forKey: migrationKey)
+    }
+    
     private func migrateCachedFiles() {
         let cacheManager = VideoCacheManager.shared
         
@@ -162,7 +177,9 @@ struct VideoListView: View {
                             // Migrate marks and position data
                             migrateVideoData(from: fileURL, to: newURL)
                         } else {
-                            // Clean name exists, remove the hash-prefixed version
+                            // Clean name exists, migrate data first then remove duplicate
+                            print("Migration: Clean file exists, migrating data from duplicate")
+                            migrateVideoData(from: fileURL, to: newURL)
                             try? FileManager.default.removeItem(at: fileURL)
                             print("Migration: Removed duplicate: \(filename)")
                         }
@@ -175,35 +192,50 @@ struct VideoListView: View {
     }
     
     private func migrateVideoData(from oldURL: URL, to newURL: URL) {
-        // Migrate marks using the actual key format from VideoMarksManager
-        let oldMarksKey = "VideoMarks_" + oldURL.absoluteString.replacingOccurrences(of: "/", with: "_")
-        let newMarksKey = "VideoMarks_" + newURL.absoluteString.replacingOccurrences(of: "/", with: "_")
+        let filename = oldURL.lastPathComponent
+        let cleanFilename = filename.components(separatedBy: "_").dropFirst().joined(separator: "_")
         
-        if let marks = UserDefaults.standard.array(forKey: oldMarksKey) as? [Double] {
-            UserDefaults.standard.set(marks, forKey: newMarksKey)
-            UserDefaults.standard.removeObject(forKey: oldMarksKey)
-            print("Migration: Migrated \(marks.count) marks from \(oldMarksKey) to \(newMarksKey)")
+        // Find marks by searching for keys that contain the clean filename and VideoCache
+        let allKeys = UserDefaults.standard.dictionaryRepresentation().keys.filter { $0.starts(with: "VideoMarks_") }
+        
+        // In migrateVideoData, add this debug line:
+        let allMarkKeys = UserDefaults.standard.dictionaryRepresentation().keys.filter { $0.starts(with: "VideoMarks_") }
+        print("All mark keys: \(allMarkKeys)")
+        print("Looking for filename containing: \(cleanFilename)")
+        
+        for key in allKeys {
+            if key.contains("VideoCache") && key.contains("_\(cleanFilename)") {
+                if let marks = UserDefaults.standard.array(forKey: key) as? [Double] {
+                    let newMarksKey = "VideoMarks_" + newURL.absoluteString.replacingOccurrences(of: "/", with: "_")
+                    UserDefaults.standard.set(marks, forKey: newMarksKey)
+                    UserDefaults.standard.removeObject(forKey: key)
+                    print("Migration: Found and migrated \(marks.count) marks from \(key)")
+                    break
+                }
+            }
         }
         
-        // Migrate video position using VideoPositionManager key format
-        let oldPositionKey = oldURL.absoluteString
-        let newPositionKey = newURL.absoluteString
-        
+        // Similar approach for positions and last played
         var positions = UserDefaults.standard.dictionary(forKey: "video_positions") as? [String: Double] ?? [:]
-        if let position = positions[oldPositionKey] {
-            positions[newPositionKey] = position
-            positions.removeValue(forKey: oldPositionKey)
-            UserDefaults.standard.set(positions, forKey: "video_positions")
-            print("Migration: Migrated position \(position)")
+        for (key, position) in positions {
+            if key.contains(cleanFilename) {
+                positions[newURL.absoluteString] = position
+                positions.removeValue(forKey: key)
+                UserDefaults.standard.set(positions, forKey: "video_positions")
+                print("Migration: Migrated position \(position)")
+                break
+            }
         }
         
-        // Migrate last played date using VideoCacheManager key format
         var lastPlayedDict = UserDefaults.standard.dictionary(forKey: "videoLastPlayed") as? [String: Double] ?? [:]
-        if let lastPlayedTimestamp = lastPlayedDict[oldURL.absoluteString] {
-            lastPlayedDict[newURL.absoluteString] = lastPlayedTimestamp
-            lastPlayedDict.removeValue(forKey: oldURL.absoluteString)
-            UserDefaults.standard.set(lastPlayedDict, forKey: "videoLastPlayed")
-            print("Migration: Migrated last played date")
+        for (key, timestamp) in lastPlayedDict {
+            if key.contains("VideoCache") && key.contains(cleanFilename) {
+                lastPlayedDict[newURL.absoluteString] = timestamp
+                lastPlayedDict.removeValue(forKey: key)
+                UserDefaults.standard.set(lastPlayedDict, forKey: "videoLastPlayed")
+                print("Migration: Migrated last played date")
+                break
+            }
         }
     }
     
