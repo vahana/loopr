@@ -8,8 +8,6 @@ struct VideoListView: View {
     @State private var isLoading = true
     @FocusState private var focusedVideoIndex: Int?
     
-    private let migrationKey = "videoDataMigrated_v1"
-    
     var body: some View {
         VStack {
             if isLoading {
@@ -24,7 +22,7 @@ struct VideoListView: View {
                         .font(.system(size: 60))
                         .foregroundColor(.gray)
                     
-                    Text("No Downloaded Videos")
+                    Text("No Videos")
                         .font(.title2)
                         .foregroundColor(.white)
                     
@@ -49,7 +47,6 @@ struct VideoListView: View {
             }
         }
         .onAppear {
-//            UserDefaults.standard.removeObject(forKey: "videoDataMigrated_v1")
             loadVideoLibrary()
         }
         .onChange(of: refreshTrigger) { _, _ in
@@ -80,12 +77,7 @@ struct VideoListView: View {
     
     private func loadVideosInBackground() async -> [Video] {
         let cacheManager = VideoCacheManager.shared
-        
-        if shouldRunMigration() {
-            await migrateCachedFiles()
-            markMigrationComplete()
-        }
-        
+                
         var videos: [Video] = []
         
         // Load from cache directory (migrated files)
@@ -133,9 +125,13 @@ struct VideoListView: View {
                 
                 let displayName = filename.replacingOccurrences(of: ".mp4", with: "")
                 
+                // Get description from metadata
+                let videoMetadata = UserDefaults.standard.dictionary(forKey: "videoMetadata") as? [String: [String: String]] ?? [:]
+                let videoDescription = videoMetadata[displayName]?["description"] ?? "Downloaded Video"
+                
                 let video = Video(
                     title: displayName,
-                    description: "Downloaded Video",
+                    description: videoDescription,
                     url: fileURL
                 )
                 
@@ -147,123 +143,6 @@ struct VideoListView: View {
         }
         
         return videos
-    }
-    
-    private func shouldRunMigration() -> Bool {
-        return !UserDefaults.standard.bool(forKey: migrationKey)
-    }
-    
-    private func markMigrationComplete() {
-        UserDefaults.standard.set(true, forKey: migrationKey)
-    }
-    
-    private func migrateCachedFiles() async {
-        let cacheManager = VideoCacheManager.shared
-        
-        do {
-            let fileURLs = try FileManager.default.contentsOfDirectory(
-                at: cacheManager.cacheDirectory,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-            )
-            
-            print("Migration: Found \(fileURLs.count) files to check")
-            
-            for fileURL in fileURLs {
-                let filename = fileURL.lastPathComponent
-                
-                if filename.hasSuffix(".marks") {
-                    continue
-                }
-                
-                print("Migration: Checking file: \(filename)")
-                
-                if filename.contains("_") {
-                    let components = filename.components(separatedBy: "_")
-                    if components.count > 1 {
-                        let cleanName = components.dropFirst().joined(separator: "_")
-                        let newURL = cacheManager.cacheDirectory.appendingPathComponent(cleanName)
-                        
-                        print("Migration: Attempting to rename \(filename) -> \(cleanName)")
-                        
-                        if !FileManager.default.fileExists(atPath: newURL.path) {
-                            try? FileManager.default.moveItem(at: fileURL, to: newURL)
-                            print("Migration: SUCCESS - Migrated: \(filename) -> \(cleanName)")
-                            await migrateVideoData(from: fileURL, to: newURL)
-                        } else {
-                            print("Migration: Clean file exists, migrating data from duplicate")
-                            await migrateVideoData(from: fileURL, to: newURL)
-                            try? FileManager.default.removeItem(at: fileURL)
-                            print("Migration: Removed duplicate: \(filename)")
-                        }
-                    }
-                }
-            }
-        } catch {
-            print("Migration error: \(error)")
-        }
-    }
-    
-    private func migrateVideoData(from oldURL: URL, to newURL: URL) async {
-        let filename = oldURL.lastPathComponent
-        let cleanFilename = filename.components(separatedBy: "_").dropFirst().joined(separator: "_")
-        
-        // Get original title from mapping, fallback to clean filename
-        let titleMapping = UserDefaults.standard.dictionary(forKey: "videoTitleMapping") as? [String: String] ?? [:]
-        let originalTitle = titleMapping[cleanFilename] ?? cleanFilename.replacingOccurrences(of: ".mp4", with: "")
-        
-        print("Migration: Using title '\(originalTitle)' for file \(cleanFilename)")
-        
-        // Create final URL with proper title
-        let finalURL = newURL.deletingLastPathComponent().appendingPathComponent("\(originalTitle).mp4")
-        
-        if finalURL != newURL && !FileManager.default.fileExists(atPath: finalURL.path) {
-            do {
-                try FileManager.default.moveItem(at: newURL, to: finalURL)
-                print("Migration: Renamed to proper title: \(finalURL.lastPathComponent)")
-            } catch {
-                print("Migration: Failed to rename to title: \(error)")
-                // Use newURL if rename fails
-            }
-        }
-        
-        let targetURL = FileManager.default.fileExists(atPath: finalURL.path) ? finalURL : newURL
-        
-        // Migrate marks
-        let allKeys = UserDefaults.standard.dictionaryRepresentation().keys.filter { $0.starts(with: "VideoMarks_") }
-        for key in allKeys {
-            if key.contains(cleanFilename) {
-                if let marks = UserDefaults.standard.array(forKey: key) as? [Double], !marks.isEmpty {
-                    VideoMarksManager.shared.saveMarks(marks, for: targetURL)
-                    print("Migration: Found and migrated \(marks.count) marks from \(key) to file")
-                    break
-                }
-            }
-        }
-        
-        // Migrate positions
-        var positions = UserDefaults.standard.dictionary(forKey: "video_positions") as? [String: Double] ?? [:]
-        for (key, position) in positions {
-            if key.contains(cleanFilename) {
-                positions[targetURL.absoluteString] = position
-                positions.removeValue(forKey: key)
-                UserDefaults.standard.set(positions, forKey: "video_positions")
-                print("Migration: Migrated position \(position)")
-                break
-            }
-        }
-        
-        // Migrate last played
-        var lastPlayedDict = UserDefaults.standard.dictionary(forKey: "videoLastPlayed") as? [String: Double] ?? [:]
-        for (key, timestamp) in lastPlayedDict {
-            if key.contains(cleanFilename) {
-                lastPlayedDict[targetURL.absoluteString] = timestamp
-                lastPlayedDict.removeValue(forKey: key)
-                UserDefaults.standard.set(lastPlayedDict, forKey: "videoLastPlayed")
-                print("Migration: Migrated last played date")
-                break
-            }
-        }
     }
 }
 

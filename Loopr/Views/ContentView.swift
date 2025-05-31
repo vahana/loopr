@@ -24,7 +24,7 @@ struct ContentView: View {
             } else {
                 VStack {
                     HStack {
-                        Text("Downloaded Videos")
+                        Text("Videos")
                             .font(.largeTitle)
                             .fontWeight(.bold)
                             .foregroundColor(.white)

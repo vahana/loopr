@@ -78,6 +78,30 @@ struct SettingsView: View {
     
     private var libraryTab: some View {
         VStack {
+            // App version and migration status
+            VStack(spacing: 8) {
+                HStack {
+                    Text("App Version: 1.0")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                    
+                    Spacer()
+                    
+                }
+                
+                Button("Migrate") {
+                    Task {
+                        await MigrationManager.shared.migrateCachedFiles()
+                        loadLocalVideos()
+                    }
+                }
+                .padding(.horizontal)
+            }
+            .padding()
+            .background(Color.black.opacity(0.3))
+            .cornerRadius(8)
+            .padding(.horizontal)
+            
             if localVideos.isEmpty {
                 Spacer()
                 VStack(spacing: 16) {
