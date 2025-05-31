@@ -175,31 +175,33 @@ struct VideoListView: View {
     }
     
     private func migrateVideoData(from oldURL: URL, to newURL: URL) {
-        let oldKey = oldURL.absoluteString
-        let newKey = newURL.absoluteString
+        // Migrate marks using the actual key format from VideoMarksManager
+        let oldMarksKey = "VideoMarks_" + oldURL.absoluteString.replacingOccurrences(of: "/", with: "_")
+        let newMarksKey = "VideoMarks_" + newURL.absoluteString.replacingOccurrences(of: "/", with: "_")
         
-        // Migrate marks
-        let marks = VideoMarksManager.shared.getMarks(for: oldURL)
-        if !marks.isEmpty {
-            VideoMarksManager.shared.saveMarks(marks, for: newURL)
-            VideoMarksManager.shared.clearMarks(for: oldURL)
-            print("Migration: Migrated \(marks.count) marks")
+        if let marks = UserDefaults.standard.array(forKey: oldMarksKey) as? [Double] {
+            UserDefaults.standard.set(marks, forKey: newMarksKey)
+            UserDefaults.standard.removeObject(forKey: oldMarksKey)
+            print("Migration: Migrated \(marks.count) marks from \(oldMarksKey) to \(newMarksKey)")
         }
         
-        // Migrate video position
-        if let position = VideoPositionManager.shared.getPosition(for: oldURL) {
-            VideoPositionManager.shared.savePosition(position, for: newURL)
-            VideoPositionManager.shared.clearPosition(for: oldURL)
+        // Migrate video position using VideoPositionManager key format
+        let oldPositionKey = oldURL.absoluteString
+        let newPositionKey = newURL.absoluteString
+        
+        var positions = UserDefaults.standard.dictionary(forKey: "video_positions") as? [String: Double] ?? [:]
+        if let position = positions[oldPositionKey] {
+            positions[newPositionKey] = position
+            positions.removeValue(forKey: oldPositionKey)
+            UserDefaults.standard.set(positions, forKey: "video_positions")
             print("Migration: Migrated position \(position)")
         }
         
-        // Migrate last played date
-        let cacheManager = VideoCacheManager.shared
-        if let lastPlayed = cacheManager.getLastPlayed(for: oldURL) {
-            cacheManager.updateLastPlayed(for: newURL)
-            // Clear old entry
-            var lastPlayedDict = UserDefaults.standard.dictionary(forKey: "videoLastPlayed") as? [String: Double] ?? [:]
-            lastPlayedDict.removeValue(forKey: oldKey)
+        // Migrate last played date using VideoCacheManager key format
+        var lastPlayedDict = UserDefaults.standard.dictionary(forKey: "videoLastPlayed") as? [String: Double] ?? [:]
+        if let lastPlayedTimestamp = lastPlayedDict[oldURL.absoluteString] {
+            lastPlayedDict[newURL.absoluteString] = lastPlayedTimestamp
+            lastPlayedDict.removeValue(forKey: oldURL.absoluteString)
             UserDefaults.standard.set(lastPlayedDict, forKey: "videoLastPlayed")
             print("Migration: Migrated last played date")
         }
