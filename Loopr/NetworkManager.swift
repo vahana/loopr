@@ -18,6 +18,7 @@ class NetworkManager: ObservableObject {
         guard let url = URL(string: "http://\(serverHost):\(serverPort)/videos.json") else {
             error = "Invalid server URL"
             isScanning = false
+            loadOfflineVideos()
             return
         }
         
@@ -27,15 +28,15 @@ class NetworkManager: ObservableObject {
                 
                 if let error = error {
                     self?.error = "Server connection error: \(error.localizedDescription)"
-                    // Load sample videos when server is not available
-                    self?.loadSampleVideos()
+                    // Load cached videos first, then sample videos
+                    self?.loadOfflineVideos()
                     return
                 }
                 
                 guard let httpResponse = response as? HTTPURLResponse,
                       (200...299).contains(httpResponse.statusCode) else {
                     self?.error = "Server returned invalid response"
-                    self?.loadSampleVideos()
+                    self?.loadOfflineVideos()
                     return
                 }
                 
@@ -54,13 +55,72 @@ class NetworkManager: ObservableObject {
                 task.cancel()
                 self.isScanning = false
                 self.error = "Connection timed out"
-                self.loadSampleVideos()
+                self.loadOfflineVideos()
             }
         }
     }
     
-    func loadSampleVideos() {
-        self.videos = [
+    // New method to load offline videos (cached + sample)
+    private func loadOfflineVideos() {
+        var offlineVideos: [Video] = []
+        
+        // First, load cached videos
+        let cachedVideos = loadCachedVideos()
+        offlineVideos.append(contentsOf: cachedVideos)
+        
+        // If no cached videos, fall back to sample videos
+        if cachedVideos.isEmpty {
+            offlineVideos = getSampleVideos()
+        }
+        
+        self.videos = offlineVideos
+    }
+    
+    // Load videos from cache
+    private func loadCachedVideos() -> [Video] {
+        let cacheManager = VideoCacheManager.shared
+        var cachedVideos: [Video] = []
+        
+        do {
+            let fileURLs = try FileManager.default.contentsOfDirectory(
+                at: cacheManager.cacheDirectory,
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            )
+            
+            for fileURL in fileURLs {
+                // Extract original filename from cached filename
+                let filename = fileURL.lastPathComponent
+                let components = filename.components(separatedBy: "_")
+                let displayName = components.count > 1 ? String(components.dropFirst().joined(separator: "_")) : filename
+                
+                // Create Video object for cached file
+                let video = Video(
+                    title: displayName.replacingOccurrences(of: ".mp4", with: ""),
+                    description: "Cached Video",
+                    url: fileURL
+                )
+                cachedVideos.append(video)
+            }
+            
+            // Sort by modification date (newest first)
+            cachedVideos.sort { video1, video2 in
+                guard let date1 = cacheManager.getLastPlayed(for: video1.url),
+                      let date2 = cacheManager.getLastPlayed(for: video2.url) else {
+                    return false
+                }
+                return date1 > date2
+            }
+            
+        } catch {
+            print("Error loading cached videos: \(error)")
+        }
+        
+        return cachedVideos
+    }
+    
+    private func getSampleVideos() -> [Video] {
+        return [
             Video(
                 title: "Big Buck Bunny",
                 description: "A short animated film",
@@ -69,6 +129,10 @@ class NetworkManager: ObservableObject {
             )
             // Add more sample videos if needed
         ]
+    }
+    
+    func loadSampleVideos() {
+        self.videos = getSampleVideos()
     }
     
     func loadVideos() {

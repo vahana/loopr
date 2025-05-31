@@ -1,29 +1,22 @@
 import SwiftUI
-import AVKit
 
-struct SettingsView: View {
-    @Environment(\.dismiss) private var dismiss
-    @StateObject private var viewModel = SettingsViewModel()
+struct RemoteVideoView: View {
     @ObservedObject var networkManager: NetworkManager
+    @Environment(\.dismiss) private var dismiss
     
-    @State private var showingDeleteConfirmation = false
-    @State private var videoToDelete: CachedVideoItem?
-    @State private var selectedTab = 0
-    
-    // Download state
     @State private var downloadingVideoID: UUID? = nil
     @State private var downloadProgress: Float = 0.0
     @State private var downloadTask: URLSessionDownloadTask? = nil
     @State private var observation: NSKeyValueObservation? = nil
-
+    
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             
             VStack {
-                // Header
+                // Header with title and close button
                 HStack {
-                    Text("Settings")
+                    Text("Download Videos")
                         .font(.largeTitle)
                         .fontWeight(.bold)
                         .foregroundColor(.white)
@@ -37,183 +30,68 @@ struct SettingsView: View {
                 }
                 .padding()
                 
-                // Tab selector
-                HStack(spacing: 20) {
-                    Button("Library") {
-                        selectedTab = 0
+                // Connection status
+                HStack {
+                    connectionStatusView
+                    Spacer()
+                    Button("Scan") {
+                        networkManager.scanForServer()
                     }
-                    .foregroundColor(selectedTab == 0 ? .blue : .gray)
-                    .fontWeight(selectedTab == 0 ? .bold : .regular)
-                    
-                    Button("Download") {
-                        selectedTab = 1
-                        if selectedTab == 1 {
-                            networkManager.scanForServer()
-                        }
-                    }
-                    .foregroundColor(selectedTab == 1 ? .blue : .gray)
-                    .fontWeight(selectedTab == 1 ? .bold : .regular)
+                    .padding(.horizontal)
                 }
                 .padding()
                 
-                // Content based on selected tab
-                if selectedTab == 0 {
-                    libraryTab
-                } else {
-                    downloadTab
-                }
-            }
-        }
-        .onAppear {
-            viewModel.loadCachedVideos()
-        }
-        .onDisappear {
-            cancelDownload()
-        }
-    }
-    
-    // Library management tab
-    private var libraryTab: some View {
-        List {
-            Section(header: Text("Cache Settings").foregroundColor(.white)) {
-                Toggle("Enable Video Caching", isOn: $viewModel.isCachingEnabled)
-                    .onChange(of: viewModel.isCachingEnabled) { _, newValue in
-                        viewModel.toggleCaching(enabled: newValue)
-                    }
-                
-                Button(action: {
-                    viewModel.clearAllCache()
-                }) {
-                    HStack {
-                        Text("Clear All Cache")
-                            .foregroundColor(.red)
-                        Spacer()
-                        Text("\(viewModel.totalCacheSize)")
-                            .foregroundColor(.gray)
-                    }
-                }
-            }
-            
-            Section(header: Text("Downloaded Videos").foregroundColor(.white)) {
-                if viewModel.isLoading {
-                    HStack {
-                        Spacer()
-                        ProgressView()
-                            .padding()
-                        Spacer()
-                    }
-                } else if viewModel.cachedVideos.isEmpty {
-                    Text("No downloaded videos")
-                        .foregroundColor(.gray)
-                        .italic()
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding()
-                } else {
-                    ForEach(viewModel.cachedVideos) { video in
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(video.filename)
-                                    .lineLimit(1)
-                                    .foregroundColor(.white)
-                                Text("Size: \(video.size)")
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
-                                Text("Downloaded: \(viewModel.formatDate(video.date))")
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
-                            }
-                            
-                            Spacer()
-                            
-                            Button(action: {
-                                videoToDelete = video
-                                showingDeleteConfirmation = true
-                            }) {
-                                Image(systemName: "trash")
-                                    .foregroundColor(.red)
-                            }
-                            .buttonStyle(BorderlessButtonStyle())
-                        }
-                    }
-                }
-            }
-        }
-        .background(Color.black)
-        .refreshable {
-            viewModel.loadCachedVideos()
-        }
-        .alert(isPresented: $showingDeleteConfirmation) {
-            Alert(
-                title: Text("Delete Video"),
-                message: Text("Are you sure you want to delete this downloaded video?"),
-                primaryButton: .destructive(Text("Delete")) {
-                    if let video = videoToDelete {
-                        viewModel.deleteCache(for: video)
-                    }
-                },
-                secondaryButton: .cancel()
-            )
-        }
-    }
-    
-    // Download tab
-    private var downloadTab: some View {
-        VStack {
-            // Connection status
-            HStack {
-                connectionStatusView
-                Spacer()
-                Button("Scan") {
-                    networkManager.scanForServer()
-                }
-                .padding(.horizontal)
-            }
-            .padding()
-            
-            if networkManager.isScanning {
-                Spacer()
-                ProgressView("Scanning for server...")
-                    .foregroundColor(.white)
-                Spacer()
-            } else if networkManager.videos.isEmpty {
-                Spacer()
-                VStack(spacing: 16) {
-                    Image(systemName: "server.rack")
-                        .font(.system(size: 60))
-                        .foregroundColor(.gray)
-                    
-                    Text("No Server Videos")
-                        .font(.title2)
+                if networkManager.isScanning {
+                    Spacer()
+                    ProgressView("Scanning for server...")
                         .foregroundColor(.white)
-                    
-                    if let error = networkManager.error {
-                        Text(error)
-                            .font(.subheadline)
-                            .foregroundColor(.red)
-                            .multilineTextAlignment(.center)
-                    } else {
-                        Text("Connect to server to see available videos")
-                            .font(.subheadline)
+                    Spacer()
+                } else if networkManager.videos.isEmpty {
+                    Spacer()
+                    VStack(spacing: 16) {
+                        Image(systemName: "server.rack")
+                            .font(.system(size: 60))
                             .foregroundColor(.gray)
-                    }
-                }
-                Spacer()
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 20) {
-                        ForEach(networkManager.videos) { video in
-                            DownloadVideoRow(
-                                video: video,
-                                networkManager: networkManager,
-                                downloadingVideoID: $downloadingVideoID,
-                                downloadProgress: $downloadProgress,
-                                downloadVideo: { downloadVideo(video) },
-                                cancelDownload: cancelDownload
-                            )
+                        
+                        Text("No Remote Videos")
+                            .font(.title2)
+                            .foregroundColor(.white)
+                        
+                        if let error = networkManager.error {
+                            Text(error)
+                                .font(.subheadline)
+                                .foregroundColor(.red)
+                                .multilineTextAlignment(.center)
+                        } else {
+                            Text("Connect to server to see available videos")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
                         }
                     }
-                    .padding()
+                    Spacer()
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 20) {
+                            ForEach(networkManager.videos) { video in
+                                RemoteVideoRow(
+                                    video: video,
+                                    networkManager: networkManager,
+                                    downloadingVideoID: $downloadingVideoID,
+                                    downloadProgress: $downloadProgress,
+                                    downloadVideo: { downloadVideo(video) },
+                                    cancelDownload: cancelDownload
+                                )
+                            }
+                        }
+                        .padding()
+                    }
                 }
+            }
+            .onAppear {
+                networkManager.scanForServer()
+            }
+            .onDisappear {
+                cancelDownload()
             }
         }
     }
@@ -276,8 +154,6 @@ struct SettingsView: View {
                 
                 DispatchQueue.main.async {
                     self.downloadingVideoID = nil
-                    // Refresh the library tab
-                    self.viewModel.loadCachedVideos()
                 }
             } catch {
                 print("Error saving downloaded file: \(error)")
@@ -308,7 +184,7 @@ struct SettingsView: View {
     }
 }
 
-struct DownloadVideoRow: View {
+struct RemoteVideoRow: View {
     let video: Video
     let networkManager: NetworkManager
     @Binding var downloadingVideoID: UUID?
@@ -331,23 +207,23 @@ struct DownloadVideoRow: View {
                     ZStack {
                         Rectangle()
                             .fill(Color.gray.opacity(0.3))
-                            .frame(width: 120, height: 68)
+                            .frame(width: 180, height: 100)
                             .cornerRadius(8)
                         
                         if let image = thumbnailImage {
                             Image(uiImage: image)
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(width: 120, height: 68)
+                                .frame(width: 180, height: 100)
                                 .cornerRadius(8)
                                 .clipped()
                         } else if isLoadingThumbnail {
                             ProgressView()
                         } else {
                             Text(String(video.title.prefix(1)))
-                                .font(.title2)
+                                .font(.largeTitle)
                                 .foregroundColor(.white)
-                                .padding(8)
+                                .padding(10)
                                 .background(Circle().fill(Color.blue.opacity(0.6)))
                         }
                         
@@ -355,21 +231,21 @@ struct DownloadVideoRow: View {
                         Image(systemName: isDownloaded ? "checkmark.circle.fill" : "arrow.down.circle")
                             .font(.title3)
                             .foregroundColor(isDownloaded ? .green : .white)
-                            .padding(6)
+                            .padding(8)
                             .background(Circle().fill(Color.black.opacity(0.6)))
                     }
                     
                     // Video info
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text(video.title)
                             .font(.headline)
                             .foregroundColor(.white)
                             .lineLimit(1)
                         
                         Text(video.description)
-                            .font(.caption)
+                            .font(.subheadline)
                             .foregroundColor(.gray)
-                            .lineLimit(2)
+                            .lineLimit(3)
                         
                         if isDownloaded {
                             Text("Downloaded")
@@ -383,12 +259,12 @@ struct DownloadVideoRow: View {
                     if !isDownloaded {
                         Image(systemName: "arrow.down")
                             .foregroundColor(.blue)
-                            .padding(.trailing, 8)
+                            .padding(.trailing, 16)
                     }
                 }
-                .padding(8)
+                .padding(12)
                 .background(Color.black.opacity(0.3))
-                .cornerRadius(8)
+                .cornerRadius(12)
             }
             .buttonStyle(.card)
             .disabled(isDownloaded || downloadingVideoID == video.id)
@@ -404,29 +280,29 @@ struct DownloadVideoRow: View {
                         ZStack(alignment: .leading) {
                             Rectangle()
                                 .fill(Color.gray.opacity(0.3))
-                                .frame(height: 6)
-                                .cornerRadius(3)
+                                .frame(height: 8)
+                                .cornerRadius(4)
                             
                             Rectangle()
                                 .fill(Color.blue)
-                                .frame(width: CGFloat(downloadProgress) * geometry.size.width, height: 6)
-                                .cornerRadius(3)
+                                .frame(width: CGFloat(downloadProgress) * geometry.size.width, height: 8)
+                                .cornerRadius(4)
                         }
                     }
-                    .frame(height: 6)
+                    .frame(height: 8)
                     
                     Button("Cancel") {
                         cancelDownload()
                     }
                     .font(.caption)
                     .foregroundColor(.red)
-                    .padding(.top, 2)
+                    .padding(.top, 4)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
                 .background(Color.black.opacity(0.5))
-                .cornerRadius(6)
-                .padding(.horizontal, 8)
+                .cornerRadius(8)
+                .padding(.horizontal, 12)
             }
         }
         .onAppear {
@@ -454,4 +330,3 @@ struct DownloadVideoRow: View {
         }.resume()
     }
 }
-

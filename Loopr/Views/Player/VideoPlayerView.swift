@@ -226,7 +226,7 @@ struct VideoPlayerView: View {
             private func setupDefaultMarksIfNeeded(duration: Double) {
                 if viewModel.loopMarks.isEmpty {
                     // Get frame rate for better precision
-                    let frameRate = player.currentItem?.asset.tracks(withMediaType: .video).first?.nominalFrameRate ?? 30
+                    let frameRate: Float = 30
                     let frameDuration = 1.0 / Double(frameRate)
                     
                     // Round duration to frame boundary

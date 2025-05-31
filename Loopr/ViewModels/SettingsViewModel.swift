@@ -133,6 +133,6 @@ class SettingsViewModel: ObservableObject {
 // Preview provider
 struct SettingsView_Previews: PreviewProvider {
     static var previews: some View {
-        SettingsView()
+        SettingsView(networkManager: NetworkManager())
     }
 }

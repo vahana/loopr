@@ -615,8 +615,6 @@ class VideoControlBarViewModel: ObservableObject {
         
         for mark in loopMarks {
             if abs(currentTime - mark) < playbackMarkThreshold && currentTime > mark {
-                let wasPlaying = isPlaying
-                
                 if isPlaying {
                     player.pause()
                     isPlaying = false
