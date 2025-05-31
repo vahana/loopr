@@ -47,8 +47,7 @@ struct VideoListView: View {
             }
         }
         .onAppear {
-            // TODO: REMOVE THIS Add this line in ContentView.onAppear temporarily
-            UserDefaults.standard.removeObject(forKey: "videoDataMigrated_v1")
+            //UserDefaults.standard.removeObject(forKey: "videoDataMigrated_v1")
             loadVideoLibrary()
         }
     }
@@ -61,7 +60,7 @@ struct VideoListView: View {
             
             print("Cache directory: \(cacheManager.cacheDirectory.path)")
             
-            // First, migrate old cached files (only once)
+            // Migrate old cached files and marks to file-based system
             if self.shouldRunMigration() {
                 self.migrateCachedFiles()
                 self.markMigrationComplete()
@@ -80,13 +79,23 @@ struct VideoListView: View {
                 
                 for fileURL in fileURLs {
                     let filename = fileURL.lastPathComponent
+                    
+                    // Skip .marks files
+                    if filename.hasSuffix(".marks") {
+                        continue
+                    }
+                    
                     print("Processing file: \(filename)")
                     
                     // Debug: Check if this video has marks
                     let marks = VideoMarksManager.shared.getMarks(for: fileURL)
                     let position = VideoPositionManager.shared.getPosition(for: fileURL)
                     let lastPlayed = cacheManager.getLastPlayed(for: fileURL)
+                    let marksFilePath = fileURL.appendingPathExtension("marks").path
                     
+                    print("  - Video path: \(fileURL.path)")
+                    print("  - Marks file path: \(marksFilePath)")
+                    print("  - Marks file exists: \(FileManager.default.fileExists(atPath: marksFilePath))")
                     print("  - Marks: \(marks.count) segments")
                     if !marks.isEmpty {
                         print("  - Mark times: \(marks)")
@@ -158,6 +167,12 @@ struct VideoListView: View {
             
             for fileURL in fileURLs {
                 let filename = fileURL.lastPathComponent
+                
+                // Skip .marks files
+                if filename.hasSuffix(".marks") {
+                    continue
+                }
+                
                 print("Migration: Checking file: \(filename)")
                 
                 // Check if this is an old hash-prefixed file
@@ -195,27 +210,21 @@ struct VideoListView: View {
         let filename = oldURL.lastPathComponent
         let cleanFilename = filename.components(separatedBy: "_").dropFirst().joined(separator: "_")
         
-        // Find marks by searching for keys that contain the clean filename and VideoCache
+        // Find marks by searching for keys that contain the clean filename
         let allKeys = UserDefaults.standard.dictionaryRepresentation().keys.filter { $0.starts(with: "VideoMarks_") }
         
-        // In migrateVideoData, add this debug line:
-        let allMarkKeys = UserDefaults.standard.dictionaryRepresentation().keys.filter { $0.starts(with: "VideoMarks_") }
-        print("All mark keys: \(allMarkKeys)")
-        print("Looking for filename containing: \(cleanFilename)")
-        
         for key in allKeys {
-            if key.contains("VideoCache") && key.contains("_\(cleanFilename)") {
-                if let marks = UserDefaults.standard.array(forKey: key) as? [Double] {
-                    let newMarksKey = "VideoMarks_" + newURL.absoluteString.replacingOccurrences(of: "/", with: "_")
-                    UserDefaults.standard.set(marks, forKey: newMarksKey)
-                    UserDefaults.standard.removeObject(forKey: key)
-                    print("Migration: Found and migrated \(marks.count) marks from \(key)")
+            if key.contains(cleanFilename) {
+                if let marks = UserDefaults.standard.array(forKey: key) as? [Double], !marks.isEmpty {
+                    // Save marks to file
+                    VideoMarksManager.shared.saveMarks(marks, for: newURL)
+                    print("Migration: Found and migrated \(marks.count) marks from \(key) to file")
                     break
                 }
             }
         }
         
-        // Similar approach for positions and last played
+        // Migrate positions and last played to UserDefaults (these work fine)
         var positions = UserDefaults.standard.dictionary(forKey: "video_positions") as? [String: Double] ?? [:]
         for (key, position) in positions {
             if key.contains(cleanFilename) {
@@ -229,7 +238,7 @@ struct VideoListView: View {
         
         var lastPlayedDict = UserDefaults.standard.dictionary(forKey: "videoLastPlayed") as? [String: Double] ?? [:]
         for (key, timestamp) in lastPlayedDict {
-            if key.contains("VideoCache") && key.contains(cleanFilename) {
+            if key.contains(cleanFilename) {
                 lastPlayedDict[newURL.absoluteString] = timestamp
                 lastPlayedDict.removeValue(forKey: key)
                 UserDefaults.standard.set(lastPlayedDict, forKey: "videoLastPlayed")
@@ -241,7 +250,12 @@ struct VideoListView: View {
     
     private func deleteVideo(_ video: Video) {
         do {
+            // Delete video file
             try FileManager.default.removeItem(at: video.url)
+            
+            // Delete marks file
+            VideoMarksManager.shared.clearMarks(for: video.url)
+            
             localVideos.removeAll { $0.id == video.id }
         } catch {
             print("Error deleting video: \(error)")

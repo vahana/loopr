@@ -1,37 +1,38 @@
 import Foundation
 
-// Manager class to handle persistence of video marks
+// Manager class to handle persistence of video marks using files
 class VideoMarksManager {
     static let shared = VideoMarksManager()
     
-    private let userDefaults = UserDefaults.standard
-    private let marksKeyPrefix = "VideoMarks_"
-    
     private init() {}
     
-    // Get marks for a specific video
+    // Get marks for a specific video from .marks file
     func getMarks(for videoURL: URL) -> [Double] {
-        let key = marksKey(for: videoURL)
-        if let marks = userDefaults.array(forKey: key) as? [Double] {
-            return marks
+        let marksURL = videoURL.appendingPathExtension("marks")
+        
+        do {
+            let marksData = try String(contentsOf: marksURL, encoding: .utf8)
+            return marksData.components(separatedBy: "\n").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+        } catch {
+            return []
         }
-        return []
     }
     
-    // Save marks for a specific video
+    // Save marks for a specific video to .marks file
     func saveMarks(_ marks: [Double], for videoURL: URL) {
-        let key = marksKey(for: videoURL)
-        userDefaults.set(marks, forKey: key)
+        let marksURL = videoURL.appendingPathExtension("marks")
+        let marksData = marks.map { String($0) }.joined(separator: "\n")
+        
+        do {
+            try marksData.write(to: marksURL, atomically: true, encoding: .utf8)
+        } catch {
+            print("Error saving marks to file: \(error)")
+        }
     }
     
     // Clear marks for a specific video
     func clearMarks(for videoURL: URL) {
-        let key = marksKey(for: videoURL)
-        userDefaults.removeObject(forKey: key)
-    }
-    
-    // Generate a unique key for each video URL
-    private func marksKey(for videoURL: URL) -> String {
-        return marksKeyPrefix + videoURL.absoluteString.replacingOccurrences(of: "/", with: "_")
+        let marksURL = videoURL.appendingPathExtension("marks")
+        try? FileManager.default.removeItem(at: marksURL)
     }
 }
