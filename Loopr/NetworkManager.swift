@@ -7,14 +7,12 @@ class NetworkManager: ObservableObject {
     @Published var isScanning = false
     @Published var error: String?
     
-    // Mac's hostname or IP - you can set this manually or discover it
     var serverHost = "imac.local"
     var serverPort = 8080
     
     func scanForServer() {
         isScanning = true
         
-        // Create a URL to test connection
         guard let url = URL(string: "http://\(serverHost):\(serverPort)/videos.json") else {
             error = "Invalid server URL"
             isScanning = false
@@ -28,7 +26,6 @@ class NetworkManager: ObservableObject {
                 
                 if let error = error {
                     self?.error = "Server connection error: \(error.localizedDescription)"
-                    // Load cached videos first, then sample videos
                     self?.loadOfflineVideos()
                     return
                 }
@@ -40,16 +37,13 @@ class NetworkManager: ObservableObject {
                     return
                 }
                 
-                // Success - store the server URL
                 self?.serverURL = URL(string: "http://\(self?.serverHost ?? ""):\(self?.serverPort ?? 8080)")
                 self?.loadVideos()
             }
         }
         
-        // Set a timeout for the connection
         task.resume()
         
-        // Optional: Set a timeout to cancel the task if it takes too long
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
             if self.isScanning {
                 task.cancel()
@@ -60,23 +54,26 @@ class NetworkManager: ObservableObject {
         }
     }
     
-    // New method to load offline videos (cached + sample)
     private func loadOfflineVideos() {
         var offlineVideos: [Video] = []
         
-        // First, load cached videos
         let cachedVideos = loadCachedVideos()
         offlineVideos.append(contentsOf: cachedVideos)
         
-        // If no cached videos, fall back to sample videos
-        if cachedVideos.isEmpty {
+        let documentsVideos = loadDocumentsVideos()
+        offlineVideos.append(contentsOf: documentsVideos)
+        
+        let uniqueVideos = Dictionary(grouping: offlineVideos, by: { $0.title }).compactMap { $1.first }
+        
+        if uniqueVideos.isEmpty {
             offlineVideos = getSampleVideos()
+        } else {
+            offlineVideos = uniqueVideos
         }
         
         self.videos = offlineVideos
     }
     
-    // Load videos from cache
     private func loadCachedVideos() -> [Video] {
         let cacheManager = VideoCacheManager.shared
         var cachedVideos: [Video] = []
@@ -89,12 +86,10 @@ class NetworkManager: ObservableObject {
             )
             
             for fileURL in fileURLs {
-                // Extract original filename from cached filename
                 let filename = fileURL.lastPathComponent
                 let components = filename.components(separatedBy: "_")
                 let displayName = components.count > 1 ? String(components.dropFirst().joined(separator: "_")) : filename
                 
-                // Create Video object for cached file
                 let video = Video(
                     title: displayName.replacingOccurrences(of: ".mp4", with: ""),
                     description: "Cached Video",
@@ -103,7 +98,6 @@ class NetworkManager: ObservableObject {
                 cachedVideos.append(video)
             }
             
-            // Sort by modification date (newest first)
             cachedVideos.sort { video1, video2 in
                 guard let date1 = cacheManager.getLastPlayed(for: video1.url),
                       let date2 = cacheManager.getLastPlayed(for: video2.url) else {
@@ -119,6 +113,30 @@ class NetworkManager: ObservableObject {
         return cachedVideos
     }
     
+    private func loadDocumentsVideos() -> [Video] {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        
+        do {
+            let fileURLs = try FileManager.default.contentsOfDirectory(
+                at: documentsPath,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            )
+            
+            return fileURLs.compactMap { url in
+                guard url.pathExtension.lowercased() == "mp4" else { return nil }
+                
+                return Video(
+                    title: url.deletingPathExtension().lastPathComponent,
+                    description: "Downloaded Video",
+                    url: url
+                )
+            }
+        } catch {
+            return []
+        }
+    }
+    
     private func getSampleVideos() -> [Video] {
         return [
             Video(
@@ -127,7 +145,6 @@ class NetworkManager: ObservableObject {
                 thumbnailName: "bunny_thumbnail",
                 url: URL(string: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4")!
             )
-            // Add more sample videos if needed
         ]
     }
     
@@ -156,10 +173,16 @@ class NetworkManager: ObservableObject {
                 }
                 
                 do {
-                    // Parse the video index JSON
                     let videoItems = try JSONDecoder().decode([VideoItem].self, from: data)
                     
-                    // Convert to our Video model
+                    // Store filename to title mapping for migration
+                    var titleMapping: [String: String] = [:]
+                    for item in videoItems {
+                        let filename = URL(string: item.path)?.lastPathComponent ?? item.path
+                        titleMapping[filename] = item.title
+                    }
+                    UserDefaults.standard.set(titleMapping, forKey: "videoTitleMapping")
+                    
                     self?.videos = videoItems.map { item in
                         let videoURL = serverURL.appendingPathComponent(item.path)
                         let thumbnailURL = item.thumbnail.map { serverURL.appendingPathComponent($0) }
@@ -178,63 +201,45 @@ class NetworkManager: ObservableObject {
         }.resume()
     }
     
-    // New method for handling video URLs with caching
     func loadVideoWithCache(from url: URL, completion: @escaping (URL) -> Void) {
-        // First check if caching is enabled
         if VideoCacheManager.shared.isCachingEnabled {
-            // Check if video is cached
             if let cachedURL = VideoCacheManager.shared.getCachedURL(for: url) {
-                print("Loading video from cache: \(cachedURL.lastPathComponent)")
                 completion(cachedURL)
                 return
             }
             
-            // Not cached, download and cache
-            print("Caching video: \(url.lastPathComponent)")
             VideoCacheManager.shared.cacheVideo(from: url) { cachedURL in
                 if let cachedURL = cachedURL {
-                    print("Video cached successfully: \(cachedURL.lastPathComponent)")
                     completion(cachedURL)
                 } else {
-                    print("Video caching failed, using original URL")
-                    // Fallback to original URL if caching fails
                     completion(url)
                 }
             }
         } else {
-            // Caching is disabled, use original URL
-            print("Video caching is disabled, using original URL")
             completion(url)
         }
     }
     
-    // Add method to check if a specific video is cached
     func isVideoCached(video: Video) -> Bool {
         return VideoCacheManager.shared.isVideoCached(for: video.url)
     }
     
-    // Add method to cache a specific video
     func cacheVideo(video: Video, completion: @escaping (Bool) -> Void) {
         VideoCacheManager.shared.cacheVideo(from: video.url) { cachedURL in
             completion(cachedURL != nil)
         }
     }
     
-    // Add method to delete cache for a specific video
     func deleteCacheForVideo(video: Video) {
         let cachedURL = VideoCacheManager.shared.cachedFileURL(for: video.url)
         try? FileManager.default.removeItem(at: cachedURL)
     }
     
-    // Scan for Mac manually by IP range (optional)
     func scanLocalNetwork() {
-        // Code to scan IP range would go here
-        // This is more complex and requires Network framework
-        // For simplicity, we're using manual host entry above
+        // Implementation for local network scanning if needed
     }
 }
 
-// Model for parsing the video index JSON
 struct VideoItem: Codable {
     let title: String
     let description: String

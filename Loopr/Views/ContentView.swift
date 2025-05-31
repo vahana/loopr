@@ -2,7 +2,6 @@ import SwiftUI
 import AVKit
 
 struct ContentView: View {
-    // MARK: - State
     @State private var isShowingPlayer = false
     @State private var selectedVideo: Video?
     @State private var showingSettings = false
@@ -24,7 +23,6 @@ struct ContentView: View {
                 }
             } else {
                 VStack {
-                    // Header with connection status and navigation buttons
                     HStack {
                         Text("Downloaded Videos")
                             .font(.largeTitle)
@@ -33,7 +31,6 @@ struct ContentView: View {
                         
                         Spacer()
                         
-                        // Settings button
                         Button(action: {
                             showingSettings = true
                         }) {
@@ -49,16 +46,14 @@ struct ContentView: View {
                         onSelectVideo: { video in
                             selectedVideo = video
                             isShowingPlayer = true
-                        }
+                        },
+                        refreshTrigger: showingSettings
                     )
                 }
                 .sheet(isPresented: $showingSettings) {
                     SettingsView(networkManager: networkManager)
                 }
             }
-        }
-        .onAppear {
-//            VideoCacheManager.shared.cleanExpiredCache()
         }
     }
 }

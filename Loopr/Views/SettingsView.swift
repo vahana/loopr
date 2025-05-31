@@ -1,62 +1,27 @@
 import SwiftUI
-import AVKit
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var viewModel = SettingsViewModel()
     @ObservedObject var networkManager: NetworkManager
     
-    @State private var showingDeleteConfirmation = false
-    @State private var videoToDelete: CachedVideoItem?
     @State private var selectedTab = 0
-    
-    // Download state
-    @State private var downloadingVideoID: UUID? = nil
+    @State private var downloadingVideoID: UUID?
     @State private var downloadProgress: Float = 0.0
-    @State private var downloadTask: URLSessionDownloadTask? = nil
-    @State private var observation: NSKeyValueObservation? = nil
-
+    @State private var downloadTask: URLSessionDownloadTask?
+    @State private var observation: NSKeyValueObservation?
+    @State private var localVideos: [LocalVideo] = []
+    @State private var showingDeleteConfirmation = false
+    @State private var videoToDelete: LocalVideo?
+    @FocusState private var focusedVideoIndex: Int?
+    
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             
             VStack {
-                // Header
-                HStack {
-                    Text("Settings")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                        .foregroundColor(.white)
-                    
-                    Spacer()
-                    
-                    Button("Close") {
-                        dismiss()
-                    }
-                    .padding(.horizontal)
-                }
-                .padding()
+                header
+                tabSelector
                 
-                // Tab selector
-                HStack(spacing: 20) {
-                    Button("Library") {
-                        selectedTab = 0
-                    }
-                    .foregroundColor(selectedTab == 0 ? .blue : .gray)
-                    .fontWeight(selectedTab == 0 ? .bold : .regular)
-                    
-                    Button("Download") {
-                        selectedTab = 1
-                        if selectedTab == 1 {
-                            networkManager.scanForServer()
-                        }
-                    }
-                    .foregroundColor(selectedTab == 1 ? .blue : .gray)
-                    .fontWeight(selectedTab == 1 ? .bold : .regular)
-                }
-                .padding()
-                
-                // Content based on selected tab
                 if selectedTab == 0 {
                     libraryTab
                 } else {
@@ -65,110 +30,106 @@ struct SettingsView: View {
             }
         }
         .onAppear {
-            viewModel.loadCachedVideos()
+            loadLocalVideos()
+            if selectedTab == 1 {
+                networkManager.scanForServer()
+            }
         }
         .onDisappear {
             cancelDownload()
         }
     }
     
-    // Library management tab
-    private var libraryTab: some View {
-        List {
-            Section(header: Text("Cache Settings").foregroundColor(.white)) {
-                Toggle("Enable Video Caching", isOn: $viewModel.isCachingEnabled)
-                    .onChange(of: viewModel.isCachingEnabled) { _, newValue in
-                        viewModel.toggleCaching(enabled: newValue)
-                    }
-                
-                Button(action: {
-                    viewModel.clearAllCache()
-                }) {
-                    HStack {
-                        Text("Clear All Cache")
-                            .foregroundColor(.red)
-                        Spacer()
-                        Text("\(viewModel.totalCacheSize)")
-                            .foregroundColor(.gray)
-                    }
-                }
-            }
+    private var header: some View {
+        HStack {
+            Text("Settings")
+                .font(.largeTitle)
+                .fontWeight(.bold)
+                .foregroundColor(.white)
             
-            Section(header: Text("Downloaded Videos").foregroundColor(.white)) {
-                if viewModel.isLoading {
-                    HStack {
-                        Spacer()
-                        ProgressView()
-                            .padding()
-                        Spacer()
-                    }
-                } else if viewModel.cachedVideos.isEmpty {
-                    Text("No downloaded videos")
+            Spacer()
+            
+            Button("Close") {
+                dismiss()
+            }
+            .padding(.horizontal)
+        }
+        .padding()
+    }
+    
+    private var tabSelector: some View {
+        HStack(spacing: 20) {
+            Button("Library") {
+                selectedTab = 0
+                loadLocalVideos()
+            }
+            .foregroundColor(selectedTab == 0 ? .blue : .gray)
+            .fontWeight(selectedTab == 0 ? .bold : .regular)
+            
+            Button("Download") {
+                selectedTab = 1
+                networkManager.scanForServer()
+            }
+            .foregroundColor(selectedTab == 1 ? .blue : .gray)
+            .fontWeight(selectedTab == 1 ? .bold : .regular)
+        }
+        .padding()
+    }
+    
+    private var libraryTab: some View {
+        VStack {
+            if localVideos.isEmpty {
+                Spacer()
+                VStack(spacing: 16) {
+                    Image(systemName: "video.slash")
+                        .font(.system(size: 60))
                         .foregroundColor(.gray)
-                        .italic()
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding()
-                } else {
-                    ForEach(viewModel.cachedVideos) { video in
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(video.filename)
-                                    .lineLimit(1)
-                                    .foregroundColor(.white)
-                                Text("Size: \(video.size)")
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
-                                Text("Downloaded: \(viewModel.formatDate(video.date))")
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
-                            }
-                            
-                            Spacer()
-                            
-                            Button(action: {
-                                videoToDelete = video
-                                showingDeleteConfirmation = true
-                            }) {
-                                Image(systemName: "trash")
-                                    .foregroundColor(.red)
-                            }
-                            .buttonStyle(BorderlessButtonStyle())
+                    
+                    Text("No Downloaded Videos")
+                        .font(.title2)
+                        .foregroundColor(.white)
+                }
+                Spacer()
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 20) {
+                        ForEach(localVideos.indices, id: \.self) { index in
+                            LocalVideoRow(
+                                video: localVideos[index],
+                                onDelete: {
+                                    videoToDelete = localVideos[index]
+                                    showingDeleteConfirmation = true
+                                }
+                            )
+                            .focused($focusedVideoIndex, equals: index)
+                        }
+                    }
+                    .padding()
+                }
+                .onAppear {
+                    if !localVideos.isEmpty {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            focusedVideoIndex = 0
                         }
                     }
                 }
             }
         }
-        .background(Color.black)
-        .refreshable {
-            viewModel.loadCachedVideos()
-        }
-        .alert(isPresented: $showingDeleteConfirmation) {
-            Alert(
-                title: Text("Delete Video"),
-                message: Text("Are you sure you want to delete this downloaded video?"),
-                primaryButton: .destructive(Text("Delete")) {
-                    if let video = videoToDelete {
-                        viewModel.deleteCache(for: video)
-                    }
-                },
-                secondaryButton: .cancel()
-            )
+        .alert("Delete Video", isPresented: $showingDeleteConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                if let video = videoToDelete {
+                    deleteVideo(video)
+                }
+            }
+        } message: {
+            Text("Are you sure you want to delete this video?")
         }
     }
     
-    // Download tab
     private var downloadTab: some View {
         VStack {
-            // Connection status
-            HStack {
-                connectionStatusView
-                Spacer()
-                Button("Scan") {
-                    networkManager.scanForServer()
-                }
-                .padding(.horizontal)
-            }
-            .padding()
+            connectionStatus
             
             if networkManager.isScanning {
                 Spacer()
@@ -191,10 +152,6 @@ struct SettingsView: View {
                             .font(.subheadline)
                             .foregroundColor(.red)
                             .multilineTextAlignment(.center)
-                    } else {
-                        Text("Connect to server to see available videos")
-                            .font(.subheadline)
-                            .foregroundColor(.gray)
                     }
                 }
                 Spacer()
@@ -202,13 +159,13 @@ struct SettingsView: View {
                 ScrollView {
                     LazyVStack(spacing: 20) {
                         ForEach(networkManager.videos) { video in
-                            DownloadVideoRow(
+                            RemoteVideoRow(
                                 video: video,
-                                networkManager: networkManager,
-                                downloadingVideoID: $downloadingVideoID,
-                                downloadProgress: $downloadProgress,
-                                downloadVideo: { downloadVideo(video) },
-                                cancelDownload: cancelDownload
+                                isDownloaded: isVideoDownloaded(video),
+                                isDownloading: downloadingVideoID == video.id,
+                                downloadProgress: downloadProgress,
+                                onDownload: { downloadVideo(video) },
+                                onCancel: cancelDownload
                             )
                         }
                     }
@@ -218,16 +175,26 @@ struct SettingsView: View {
         }
     }
     
-    private var connectionStatusView: some View {
+    private var connectionStatus: some View {
         HStack {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 8, height: 8)
+            HStack {
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 8, height: 8)
+                
+                Text(statusText)
+                    .foregroundColor(statusColor)
+                    .font(.caption)
+            }
             
-            Text(statusText)
-                .foregroundColor(statusColor)
-                .font(.caption)
+            Spacer()
+            
+            Button("Scan") {
+                networkManager.scanForServer()
+            }
+            .padding(.horizontal)
         }
+        .padding()
     }
     
     private var statusColor: Color {
@@ -250,14 +217,108 @@ struct SettingsView: View {
         }
     }
     
+    private func loadLocalVideos() {
+        Task {
+            let videos = await loadAllVideos()
+            await MainActor.run {
+                self.localVideos = videos.map { video in
+                    let attributes = try? FileManager.default.attributesOfItem(atPath: video.url.path)
+                    let fileSize = attributes?[.size] as? Int64 ?? 0
+                    let modificationDate = attributes?[.modificationDate] as? Date ?? Date()
+                    
+                    return LocalVideo(
+                        id: UUID(),
+                        title: video.title,
+                        url: video.url,
+                        size: ByteCountFormatter().string(fromByteCount: fileSize),
+                        date: modificationDate
+                    )
+                }
+            }
+        }
+    }
+    
+    private func loadAllVideos() async -> [Video] {
+        let cacheManager = VideoCacheManager.shared
+        var videos: [Video] = []
+        
+        // Load from cache directory
+        videos.append(contentsOf: await loadVideosFromDirectory(cacheManager.cacheDirectory))
+        
+        // Load from documents directory
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        videos.append(contentsOf: await loadVideosFromDirectory(documentsPath))
+        
+        // Remove duplicates
+        let uniqueVideos = Dictionary(grouping: videos, by: { $0.title }).compactMap { $1.first }
+        
+        return uniqueVideos.sorted { video1, video2 in
+            let date1 = cacheManager.getLastPlayed(for: video1.url) ?? .distantPast
+            let date2 = cacheManager.getLastPlayed(for: video2.url) ?? .distantPast
+            return date1 > date2
+        }
+    }
+    
+    private func loadVideosFromDirectory(_ directory: URL) async -> [Video] {
+        var videos: [Video] = []
+        
+        do {
+            let fileURLs = try FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            )
+            
+            for fileURL in fileURLs {
+                let filename = fileURL.lastPathComponent
+                
+                if filename.hasSuffix(".marks") {
+                    continue
+                }
+                
+                // Skip old hash files in cache directory only
+                if directory.lastPathComponent == "VideoCache" &&
+                   filename.contains("_") &&
+                   filename.split(separator: "_").first?.allSatisfy({ $0.isNumber || $0 == "-" }) == true {
+                    continue
+                }
+                
+                guard filename.hasSuffix(".mp4") else { continue }
+                
+                let displayName = filename.replacingOccurrences(of: ".mp4", with: "")
+                
+                let video = Video(
+                    title: displayName,
+                    description: "Downloaded Video",
+                    url: fileURL
+                )
+                
+                videos.append(video)
+            }
+            
+        } catch {
+            print("Error loading videos from \(directory.path): \(error)")
+        }
+        
+        return videos
+    }
+    
+    private func isVideoDownloaded(_ video: Video) -> Bool {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let filename = "\(video.title).mp4"
+        let localURL = documentsPath.appendingPathComponent(filename)
+        return FileManager.default.fileExists(atPath: localURL.path)
+    }
+    
     private func downloadVideo(_ video: Video) {
         downloadingVideoID = video.id
         downloadProgress = 0.0
         
-        let url = video.url
-        let request = URLRequest(url: url)
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let filename = "\(video.title).mp4"
+        let destinationURL = documentsPath.appendingPathComponent(filename)
         
-        let task = URLSession.shared.downloadTask(with: request) { localURL, response, error in
+        let task = URLSession.shared.downloadTask(with: video.url) { localURL, response, error in
             guard let localURL = localURL, error == nil else {
                 DispatchQueue.main.async {
                     self.downloadingVideoID = nil
@@ -265,19 +326,16 @@ struct SettingsView: View {
                 return
             }
             
-            let cachedURL = VideoCacheManager.shared.cachedFileURL(for: url)
-            
             do {
-                if FileManager.default.fileExists(atPath: cachedURL.path) {
-                    try FileManager.default.removeItem(at: cachedURL)
+                if FileManager.default.fileExists(atPath: destinationURL.path) {
+                    try FileManager.default.removeItem(at: destinationURL)
                 }
                 
-                try FileManager.default.moveItem(at: localURL, to: cachedURL)
+                try FileManager.default.moveItem(at: localURL, to: destinationURL)
                 
                 DispatchQueue.main.async {
                     self.downloadingVideoID = nil
-                    // Refresh the library tab
-                    self.viewModel.loadCachedVideos()
+                    self.loadLocalVideos()
                 }
             } catch {
                 print("Error saving downloaded file: \(error)")
@@ -287,15 +345,13 @@ struct SettingsView: View {
             }
         }
         
-        let obs = task.progress.observe(\.fractionCompleted) { progress, _ in
+        observation = task.progress.observe(\.fractionCompleted) { progress, _ in
             DispatchQueue.main.async {
                 self.downloadProgress = Float(progress.fractionCompleted)
             }
         }
         
-        self.downloadTask = task
-        self.observation = obs
-        
+        downloadTask = task
         task.resume()
     }
     
@@ -306,28 +362,96 @@ struct SettingsView: View {
         downloadTask = nil
         observation = nil
     }
+    
+    private func deleteVideo(_ video: LocalVideo) {
+        do {
+            try FileManager.default.removeItem(at: video.url)
+            loadLocalVideos()
+        } catch {
+            print("Error deleting video: \(error)")
+        }
+    }
 }
 
-struct DownloadVideoRow: View {
+struct LocalVideo: Identifiable {
+    let id: UUID
+    let title: String
+    let url: URL
+    let size: String
+    let date: Date
+}
+
+struct LocalVideoRow: View {
+    let video: LocalVideo
+    let onDelete: () -> Void
+    
+    var body: some View {
+        Button {
+            onDelete()
+        } label: {
+            HStack(spacing: 16) {
+                Rectangle()
+                    .fill(Color.gray.opacity(0.3))
+                    .frame(width: 120, height: 68)
+                    .cornerRadius(8)
+                    .overlay(
+                        Image(systemName: "play.fill")
+                            .foregroundColor(.white)
+                            .font(.title3)
+                    )
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(video.title)
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    
+                    Text("Size: \(video.size)")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                    
+                    Text("Downloaded: \(RelativeDateTimeFormatter().localizedString(for: video.date, relativeTo: Date()))")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+                
+                Spacer()
+                
+                Button {
+                    onDelete()
+                } label: {
+                    Image(systemName: "trash")
+                        .foregroundColor(.red)
+                        .font(.title3)
+                }
+                .buttonStyle(.borderless)
+            }
+            .padding(12)
+            .background(Color.black.opacity(0.3))
+            .cornerRadius(12)
+        }
+        .buttonStyle(.card)
+    }
+}
+
+struct RemoteVideoRow: View {
     let video: Video
-    let networkManager: NetworkManager
-    @Binding var downloadingVideoID: UUID?
-    @Binding var downloadProgress: Float
-    let downloadVideo: () -> Void
-    let cancelDownload: () -> Void
+    let isDownloaded: Bool
+    let isDownloading: Bool
+    let downloadProgress: Float
+    let onDownload: () -> Void
+    let onCancel: () -> Void
     
     @State private var thumbnailImage: UIImage?
-    @State private var isLoadingThumbnail = false
     
     var body: some View {
         VStack(spacing: 0) {
             Button {
-                if !isDownloaded && downloadingVideoID != video.id {
-                    downloadVideo()
+                if !isDownloaded && !isDownloading {
+                    onDownload()
                 }
             } label: {
                 HStack(spacing: 16) {
-                    // Thumbnail
                     ZStack {
                         Rectangle()
                             .fill(Color.gray.opacity(0.3))
@@ -341,17 +465,12 @@ struct DownloadVideoRow: View {
                                 .frame(width: 120, height: 68)
                                 .cornerRadius(8)
                                 .clipped()
-                        } else if isLoadingThumbnail {
-                            ProgressView()
                         } else {
                             Text(String(video.title.prefix(1)))
                                 .font(.title2)
                                 .foregroundColor(.white)
-                                .padding(8)
-                                .background(Circle().fill(Color.blue.opacity(0.6)))
                         }
                         
-                        // Download/Downloaded icon
                         Image(systemName: isDownloaded ? "checkmark.circle.fill" : "arrow.down.circle")
                             .font(.title3)
                             .foregroundColor(isDownloaded ? .green : .white)
@@ -359,7 +478,6 @@ struct DownloadVideoRow: View {
                             .background(Circle().fill(Color.black.opacity(0.6)))
                     }
                     
-                    // Video info
                     VStack(alignment: .leading, spacing: 4) {
                         Text(video.title)
                             .font(.headline)
@@ -383,7 +501,6 @@ struct DownloadVideoRow: View {
                     if !isDownloaded {
                         Image(systemName: "arrow.down")
                             .foregroundColor(.blue)
-                            .padding(.trailing, 8)
                     }
                 }
                 .padding(8)
@@ -391,11 +508,10 @@ struct DownloadVideoRow: View {
                 .cornerRadius(8)
             }
             .buttonStyle(.card)
-            .disabled(isDownloaded || downloadingVideoID == video.id)
+            .disabled(isDownloaded || isDownloading)
             
-            // Progress bar
-            if downloadingVideoID == video.id {
-                VStack(alignment: .leading, spacing: 4) {
+            if isDownloading {
+                VStack(spacing: 4) {
                     Text("Downloading... \(Int(downloadProgress * 100))%")
                         .font(.caption)
                         .foregroundColor(.white)
@@ -416,42 +532,30 @@ struct DownloadVideoRow: View {
                     .frame(height: 6)
                     
                     Button("Cancel") {
-                        cancelDownload()
+                        onCancel()
                     }
                     .font(.caption)
                     .foregroundColor(.red)
-                    .padding(.top, 2)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
+                .padding(8)
                 .background(Color.black.opacity(0.5))
                 .cornerRadius(6)
-                .padding(.horizontal, 8)
             }
         }
         .onAppear {
             if let thumbnailURL = video.thumbnailURL {
-                loadNetworkImage(from: thumbnailURL)
+                loadThumbnail(from: thumbnailURL)
             }
         }
     }
     
-    private var isDownloaded: Bool {
-        networkManager.isVideoCached(video: video)
-    }
-    
-    private func loadNetworkImage(from url: URL) {
-        isLoadingThumbnail = true
-        
-        URLSession.shared.dataTask(with: url) { data, response, error in
-            DispatchQueue.main.async {
-                isLoadingThumbnail = false
-                
-                if let data = data, let image = UIImage(data: data) {
+    private func loadThumbnail(from url: URL) {
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            if let data = data, let image = UIImage(data: data) {
+                DispatchQueue.main.async {
                     self.thumbnailImage = image
                 }
             }
         }.resume()
     }
 }
-
