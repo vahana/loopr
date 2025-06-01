@@ -202,9 +202,17 @@ class NetworkManager: ObservableObject {
     
     func loadVideoWithCache(from url: URL, completion: @escaping (URL) -> Void) {
         if VideoCacheManager.shared.isCachingEnabled {
+            // Always check for fresh cached URL, don't trust previous references
             if let cachedURL = VideoCacheManager.shared.getCachedURL(for: url) {
-                completion(cachedURL)
-                return
+                // Verify the cached file still exists and is readable
+                if FileManager.default.fileExists(atPath: cachedURL.path) &&
+                   VideoCacheManager.shared.verifyVideoFile(at: cachedURL) {
+                    completion(cachedURL)
+                    return
+                } else {
+                    // Cached file is missing or corrupted, remove stale reference and download again
+                    VideoCacheManager.shared.deleteCache(for: url)
+                }
             }
             
             VideoCacheManager.shared.cacheVideo(from: url) { cachedURL in

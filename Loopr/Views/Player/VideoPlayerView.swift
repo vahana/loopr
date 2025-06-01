@@ -147,6 +147,7 @@ struct VideoPlayerView: View {
     private func handleDisappear() {
         player.pause()
         saveVideoPosition()
+        cleanupPlayer()
     }
     
     /// Handle menu button press (with double-press detection for loop mode)
@@ -173,19 +174,30 @@ struct VideoPlayerView: View {
     
     /// Set up the player and load video
     private func setupPlayer() {
+        // Clean up existing player first
+        cleanupPlayer()
+        
         networkManager.loadVideoWithCache(from: video.url) { finalURL in
-            // Create player with final URL (cached or original)
-            let player = AVPlayer(url: finalURL)
-            self.player = player
-            self.viewModel.player = player
-            
-            // Explicitly set the player to paused state initially
-            player.pause()
-            self.viewModel.isPlaying = false
-            
-            // Load video metadata asynchronously
-            loadVideoMetadata(player: player)
+            DispatchQueue.main.async {
+                // Create a fresh player with the final URL
+                let newPlayer = AVPlayer(url: finalURL)
+                self.player = newPlayer
+                self.viewModel.player = newPlayer
+                
+                // Explicitly set the player to paused state initially
+                newPlayer.pause()
+                self.viewModel.isPlaying = false
+                
+                // Load video metadata asynchronously
+                self.loadVideoMetadata(player: newPlayer)
+            }
         }
+    }
+    
+    /// Clean up the current player
+    private func cleanupPlayer() {
+        player.pause()
+        player.replaceCurrentItem(with: nil)
     }
     
     /// Load video metadata (duration, marks)

@@ -65,6 +65,26 @@ class VideoCacheManager {
         if isVideoCached(for: url) {
             let cachedFile = cachedFileURL(for: url)
             
+            // Verify file exists and is readable
+            guard fileManager.fileExists(atPath: cachedFile.path) else {
+                return nil
+            }
+            
+            // Check file size to ensure it's not corrupted
+            do {
+                let attributes = try fileManager.attributesOfItem(atPath: cachedFile.path)
+                let fileSize = attributes[.size] as? Int64 ?? 0
+                if fileSize == 0 {
+                    // File is empty, remove it
+                    try? fileManager.removeItem(at: cachedFile)
+                    return nil
+                }
+            } catch {
+                // Can't read file attributes, remove it
+                try? fileManager.removeItem(at: cachedFile)
+                return nil
+            }
+            
             // Check if cached file is too old
             if let attributes = try? fileManager.attributesOfItem(atPath: cachedFile.path),
                let modificationDate = attributes[.modificationDate] as? Date,
@@ -81,6 +101,26 @@ class VideoCacheManager {
             }
         }
         return nil
+    }
+    
+    func verifyVideoFile(at url: URL) -> Bool {
+        // Check if file exists
+        guard fileManager.fileExists(atPath: url.path) else { return false }
+        
+        // Check file size
+        do {
+            let attributes = try fileManager.attributesOfItem(atPath: url.path)
+            let fileSize = attributes[.size] as? Int64 ?? 0
+            if fileSize < 1024 { // File too small to be a valid video
+                return false
+            }
+        } catch {
+            return false
+        }
+        
+        // Quick AVAsset validation
+        let asset = AVAsset(url: url)
+        return asset.isReadable
     }
     
     func cacheVideo(from url: URL, completion: @escaping (URL?) -> Void) {
@@ -113,6 +153,15 @@ class VideoCacheManager {
                 
                 // Move downloaded file to cache
                 try self.fileManager.moveItem(at: tempURL, to: cachedFile)
+                
+                // Verify the cached file is valid
+                if !self.verifyVideoFile(at: cachedFile) {
+                    try? self.fileManager.removeItem(at: cachedFile)
+                    DispatchQueue.main.async {
+                        completion(nil)
+                    }
+                    return
+                }
                 
                 DispatchQueue.main.async {
                     completion(cachedFile)
@@ -266,7 +315,8 @@ class VideoCacheManager {
     }
     
     func deleteCache(for url: URL) {
-        try? fileManager.removeItem(at: url)
+        let cachedFile = cachedFileURL(for: url)
+        try? fileManager.removeItem(at: cachedFile)
     }
     
     func updateLastPlayed(for url: URL) {
