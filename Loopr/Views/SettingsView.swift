@@ -87,15 +87,7 @@ struct SettingsView: View {
                     
                     Spacer()
                     
-                }
-                
-                Button("Migrate") {
-                    Task {
-                        await MigrationManager.shared.migrateCachedFiles()
-                        loadLocalVideos()
-                    }
-                }
-                .padding(.horizontal)
+                }                
             }
             .padding()
             .background(Color.black.opacity(0.3))

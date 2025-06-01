@@ -167,7 +167,15 @@ class VideoCacheManager {
             do {
                 let resourceValues = try fileURL.resourceValues(forKeys: [.fileSizeKey])
                 if let fileSize = resourceValues.fileSize {
-                    totalSize += UInt64(fileSize)
+                    // Use overflow-safe addition
+                    let fileSizeUInt64 = UInt64(max(0, fileSize))
+                    if totalSize <= UInt64.max - fileSizeUInt64 {
+                        totalSize += fileSizeUInt64
+                    } else {
+                        // If we would overflow, just return max value
+                        print("Cache size calculation would overflow, returning max")
+                        return UInt64.max
+                    }
                 }
             } catch {
                 print("Error calculating size: \(error)")
@@ -186,6 +194,17 @@ class VideoCacheManager {
             return
         }
         
+        // Calculate target size safely (75% of limit)
+        let targetSize: UInt64
+        if cacheSizeLimit <= UInt64.max / 4 {
+            targetSize = (cacheSizeLimit * 3) / 4
+        } else {
+            // Prevent overflow in calculation
+            targetSize = cacheSizeLimit - (cacheSizeLimit / 4)
+        }
+        
+        print("Cache size \(currentSize) exceeds limit \(cacheSizeLimit), cleaning to \(targetSize)")
+        
         // Get all cached files with their modification dates
         guard let fileURLs = try? fileManager.contentsOfDirectory(
             at: cacheDirectory,
@@ -201,7 +220,8 @@ class VideoCacheManager {
                 let resourceValues = try fileURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
                 if let date = resourceValues.contentModificationDate,
                    let size = resourceValues.fileSize {
-                    files.append((fileURL, date, UInt64(size)))
+                    let sizeUInt64 = UInt64(max(0, size))
+                    files.append((fileURL, date, sizeUInt64))
                 }
             } catch {
                 print("Error getting file attributes: \(error)")
@@ -211,21 +231,38 @@ class VideoCacheManager {
         // Sort by date (oldest first)
         files.sort { $0.date < $1.date }
         
-        // Remove files until we're under the limit
-        var sizeToFree = currentSize - (cacheSizeLimit * 3 / 4) // Free up to 75% of limit
+        // Calculate how much we need to free up safely
+        var sizeToFree: UInt64 = 0
+        if currentSize > targetSize {
+            sizeToFree = currentSize - targetSize
+        }
         
+        print("Need to free up \(sizeToFree) bytes")
+        
+        // Remove files until we're under the target
+        var freedSize: UInt64 = 0
         for file in files {
-            if sizeToFree <= 0 {
+            if freedSize >= sizeToFree {
                 break
             }
             
             do {
                 try fileManager.removeItem(at: file.url)
-                sizeToFree -= file.size
+                print("Removed cache file: \(file.url.lastPathComponent) (\(file.size) bytes)")
+                
+                // Safely add to freed size
+                if freedSize <= UInt64.max - file.size {
+                    freedSize += file.size
+                } else {
+                    freedSize = UInt64.max
+                    break
+                }
             } catch {
                 print("Error removing cache file: \(error)")
             }
         }
+        
+        print("Cache cleanup complete. Freed \(freedSize) bytes")
     }
     
     func deleteCache(for url: URL) {

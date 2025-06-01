@@ -60,9 +60,6 @@ class NetworkManager: ObservableObject {
         let cachedVideos = loadCachedVideos()
         offlineVideos.append(contentsOf: cachedVideos)
         
-        let documentsVideos = loadDocumentsVideos()
-        offlineVideos.append(contentsOf: documentsVideos)
-        
         let uniqueVideos = Dictionary(grouping: offlineVideos, by: { $0.title }).compactMap { $1.first }
         
         if uniqueVideos.isEmpty {
@@ -85,14 +82,35 @@ class NetworkManager: ObservableObject {
                 options: [.skipsHiddenFiles]
             )
             
+            // Load video metadata for descriptions
+            let videoMetadata = UserDefaults.standard.dictionary(forKey: "videoMetadata") as? [String: [String: String]] ?? [:]
+            
             for fileURL in fileURLs {
                 let filename = fileURL.lastPathComponent
                 let components = filename.components(separatedBy: "_")
                 let displayName = components.count > 1 ? String(components.dropFirst().joined(separator: "_")) : filename
+                let cleanTitle = displayName.replacingOccurrences(of: ".mp4", with: "")
+                
+                // Get description from metadata, fallback to title lookup, then default
+                var videoDescription = "Cached Video"
+                
+                // First try direct title match
+                if let metadata = videoMetadata[cleanTitle] {
+                    videoDescription = metadata["description"] ?? "Cached Video"
+                } else {
+                    // Try to find by filename match
+                    for (title, metadata) in videoMetadata {
+                        if let metadataFilename = metadata["filename"],
+                           metadataFilename == filename || metadataFilename == displayName {
+                            videoDescription = metadata["description"] ?? title
+                            break
+                        }
+                    }
+                }
                 
                 let video = Video(
-                    title: displayName.replacingOccurrences(of: ".mp4", with: ""),
-                    description: "Cached Video",
+                    title: cleanTitle,
+                    description: videoDescription,
                     url: fileURL
                 )
                 cachedVideos.append(video)
@@ -111,30 +129,6 @@ class NetworkManager: ObservableObject {
         }
         
         return cachedVideos
-    }
-    
-    private func loadDocumentsVideos() -> [Video] {
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        
-        do {
-            let fileURLs = try FileManager.default.contentsOfDirectory(
-                at: documentsPath,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-            )
-            
-            return fileURLs.compactMap { url in
-                guard url.pathExtension.lowercased() == "mp4" else { return nil }
-                
-                return Video(
-                    title: url.deletingPathExtension().lastPathComponent,
-                    description: "Downloaded Video",
-                    url: url
-                )
-            }
-        } catch {
-            return []
-        }
     }
     
     private func getSampleVideos() -> [Video] {
@@ -175,13 +169,18 @@ class NetworkManager: ObservableObject {
                 do {
                     let videoItems = try JSONDecoder().decode([VideoItem].self, from: data)
                     
-                    // Store filename to title mapping for migration
-                    var titleMapping: [String: String] = [:]
+                    // Store complete metadata for later use
+                    var videoMetadata: [String: [String: String]] = [:]
                     for item in videoItems {
                         let filename = URL(string: item.path)?.lastPathComponent ?? item.path
-                        titleMapping[filename] = item.title
+                        videoMetadata[item.title] = [
+                            "filename": filename,
+                            "description": item.description,
+                            "path": item.path
+                        ]
                     }
-                    UserDefaults.standard.set(titleMapping, forKey: "videoTitleMapping")
+                    UserDefaults.standard.set(videoMetadata, forKey: "videoMetadata")
+                    print("Saved metadata for \(videoMetadata.count) videos")
                     
                     self?.videos = videoItems.map { item in
                         let videoURL = serverURL.appendingPathComponent(item.path)

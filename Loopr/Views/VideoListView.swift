@@ -102,6 +102,9 @@ struct VideoListView: View {
                 options: [.skipsHiddenFiles]
             )
             
+            // Load video metadata for descriptions
+            let videoMetadata = UserDefaults.standard.dictionary(forKey: "videoMetadata") as? [String: [String: String]] ?? [:]
+            
             for fileURL in fileURLs {
                 let filename = fileURL.lastPathComponent
                 
@@ -120,9 +123,22 @@ struct VideoListView: View {
                 
                 let displayName = filename.replacingOccurrences(of: ".mp4", with: "")
                 
-                // Get description from metadata
-                let videoMetadata = UserDefaults.standard.dictionary(forKey: "videoMetadata") as? [String: [String: String]] ?? [:]
-                let videoDescription = videoMetadata[displayName]?["description"] ?? "Downloaded Video"
+                // Get description from metadata, fallback to title lookup, then default
+                var videoDescription = "Downloaded Video"
+                
+                // First try direct title match
+                if let metadata = videoMetadata[displayName] {
+                    videoDescription = metadata["description"] ?? "Downloaded Video"
+                } else {
+                    // Try to find by filename match
+                    for (title, metadata) in videoMetadata {
+                        if let metadataFilename = metadata["filename"],
+                           metadataFilename == filename {
+                            videoDescription = metadata["description"] ?? title
+                            break
+                        }
+                    }
+                }
                 
                 let video = Video(
                     title: displayName,
