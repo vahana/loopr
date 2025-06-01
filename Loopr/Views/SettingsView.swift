@@ -180,20 +180,44 @@ struct SettingsView: View {
                 }
                 Spacer()
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 20) {
-                        ForEach(networkManager.videos) { video in
-                            RemoteVideoRow(
-                                video: video,
-                                isDownloaded: isVideoDownloaded(video),
-                                isDownloading: downloadingVideoID == video.id,
-                                downloadProgress: downloadProgress,
-                                onDownload: { downloadVideo(video) },
-                                onCancel: cancelDownload
-                            )
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 20) {
+                            ForEach(Array(networkManager.videos.enumerated()), id: \.element.id) { index, video in
+                                RemoteVideoRow(
+                                    video: video,
+                                    isDownloaded: isVideoDownloaded(video),
+                                    isDownloading: downloadingVideoID == video.id,
+                                    downloadProgress: downloadProgress,
+                                    onDownload: {
+                                        downloadVideo(video)
+                                        // Maintain focus on the downloading item
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                            withAnimation(.easeInOut(duration: 0.3)) {
+                                                proxy.scrollTo(video.id, anchor: .center)
+                                            }
+                                        }
+                                    },
+                                    onCancel: cancelDownload
+                                )
+                                .id(video.id)
+                                .focused($focusedVideoIndex, equals: index)
+                            }
+                        }
+                        .padding()
+                    }
+                    .onChange(of: downloadingVideoID) { _, newValue in
+                        // When download starts, scroll to and focus on that item
+                        if let downloadingID = newValue,
+                           let downloadingIndex = networkManager.videos.firstIndex(where: { $0.id == downloadingID }) {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                focusedVideoIndex = downloadingIndex
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    proxy.scrollTo(downloadingID, anchor: .center)
+                                }
+                            }
                         }
                     }
-                    .padding()
                 }
             }
         }
@@ -266,12 +290,8 @@ struct SettingsView: View {
         let cacheManager = VideoCacheManager.shared
         var videos: [Video] = []
         
-        // Load from cache directory
+        // Load from cache directory only (all videos are now stored here)
         videos.append(contentsOf: await loadVideosFromDirectory(cacheManager.cacheDirectory))
-        
-        // Load from documents directory
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        videos.append(contentsOf: await loadVideosFromDirectory(documentsPath))
         
         // Remove duplicates
         let uniqueVideos = Dictionary(grouping: videos, by: { $0.title }).compactMap { $1.first }
@@ -328,9 +348,10 @@ struct SettingsView: View {
     }
     
     private func isVideoDownloaded(_ video: Video) -> Bool {
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        // Check cache directory instead of documents
+        let cacheManager = VideoCacheManager.shared
         let filename = "\(video.title).mp4"
-        let localURL = documentsPath.appendingPathComponent(filename)
+        let localURL = cacheManager.cacheDirectory.appendingPathComponent(filename)
         return FileManager.default.fileExists(atPath: localURL.path)
     }
     
@@ -338,53 +359,201 @@ struct SettingsView: View {
         downloadingVideoID = video.id
         downloadProgress = 0.0
         
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let filename = "\(video.title).mp4"
-        let destinationURL = documentsPath.appendingPathComponent(filename)
+        print("=== DOWNLOAD DEBUG INFO ===")
+        print("Video title: \(video.title)")
+        print("Video URL: \(video.url)")
+        print("Video description: \(video.description)")
         
-        let task = URLSession.shared.downloadTask(with: video.url) { localURL, response, error in
-            guard let localURL = localURL, error == nil else {
+        // Test if the URL is reachable first
+        testVideoURL(video.url) { reachable in
+            if !reachable {
+                print("ERROR: Video URL is not reachable!")
                 DispatchQueue.main.async {
                     self.downloadingVideoID = nil
+                    self.downloadProgress = 0.0
                 }
                 return
             }
             
+            print("Video URL is reachable, starting download...")
+            self.performActualDownload(video)
+        }
+    }
+    
+    private func testVideoURL(_ url: URL, completion: @escaping (Bool) -> Void) {
+        print("Testing URL reachability: \(url)")
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "HEAD"  // Just check if file exists, don't download
+        request.timeoutInterval = 30
+        
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            if let error = error {
+                print("URL test failed: \(error)")
+                completion(false)
+                return
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("URL test response code: \(httpResponse.statusCode)")
+                print("Content-Length: \(httpResponse.value(forHTTPHeaderField: "Content-Length") ?? "unknown")")
+                print("Content-Type: \(httpResponse.value(forHTTPHeaderField: "Content-Type") ?? "unknown")")
+                
+                completion(httpResponse.statusCode == 200)
+            } else {
+                print("No HTTP response received")
+                completion(false)
+            }
+        }.resume()
+    }
+    
+    private func performActualDownload(_ video: Video) {
+        print("Starting actual download...")
+        
+        // Use cache directory
+        let cacheManager = VideoCacheManager.shared
+        let filename = "\(video.title).mp4"
+        let destinationURL = cacheManager.cacheDirectory.appendingPathComponent(filename)
+        
+        print("Destination: \(destinationURL.path)")
+        
+        // Try with simpler URLSession configuration first
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 60    // Start with shorter timeout
+        config.timeoutIntervalForResource = 600  // 10 minutes total
+        config.allowsCellularAccess = false
+        config.waitsForConnectivity = true
+        
+        let session = URLSession(configuration: config)
+        
+        // Use simple URL, not URLRequest
+        let task = session.downloadTask(with: video.url) { localURL, response, error in
+            print("=== DOWNLOAD COMPLETION ===")
+            
+            if let error = error {
+                print("Download failed with error: \(error)")
+                
+                if let urlError = error as? URLError {
+                    print("URLError code: \(urlError.code.rawValue)")
+                    print("URLError description: \(urlError.localizedDescription)")
+                    
+                    switch urlError.code {
+                    case .timedOut:
+                        print("TIMEOUT: Server took too long to respond")
+                    case .cannotConnectToHost:
+                        print("CONNECTION: Cannot reach server")
+                    case .networkConnectionLost:
+                        print("NETWORK: Connection was lost during download")
+                    case .badURL:
+                        print("URL: The download URL is malformed")
+                    default:
+                        print("OTHER: \(urlError.code)")
+                    }
+                }
+                
+                DispatchQueue.main.async {
+                    self.downloadingVideoID = nil
+                    self.downloadProgress = 0.0
+                }
+                return
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("Download response code: \(httpResponse.statusCode)")
+                print("Response headers: \(httpResponse.allHeaderFields)")
+            }
+            
+            guard let localURL = localURL else {
+                print("ERROR: No temporary file URL received")
+                DispatchQueue.main.async {
+                    self.downloadingVideoID = nil
+                    self.downloadProgress = 0.0
+                }
+                return
+            }
+            
+            print("Downloaded to: \(localURL.path)")
+            
+            // Check file size
+            do {
+                let attributes = try FileManager.default.attributesOfItem(atPath: localURL.path)
+                let fileSize = attributes[.size] as? Int64 ?? 0
+                print("Downloaded file size: \(fileSize) bytes")
+                
+                if fileSize == 0 {
+                    print("ERROR: Downloaded file is empty!")
+                    DispatchQueue.main.async {
+                        self.downloadingVideoID = nil
+                        self.downloadProgress = 0.0
+                    }
+                    return
+                }
+            } catch {
+                print("ERROR: Cannot read downloaded file: \(error)")
+                DispatchQueue.main.async {
+                    self.downloadingVideoID = nil
+                    self.downloadProgress = 0.0
+                }
+                return
+            }
+            
+            // Move to final destination
             do {
                 if FileManager.default.fileExists(atPath: destinationURL.path) {
                     try FileManager.default.removeItem(at: destinationURL)
+                    print("Removed existing file")
                 }
                 
                 try FileManager.default.moveItem(at: localURL, to: destinationURL)
+                print("SUCCESS: File moved to \(destinationURL.path)")
+                
+                // Verify final file
+                let finalAttributes = try FileManager.default.attributesOfItem(atPath: destinationURL.path)
+                let finalSize = finalAttributes[.size] as? Int64 ?? 0
+                print("Final file size: \(finalSize) bytes")
                 
                 DispatchQueue.main.async {
                     self.downloadingVideoID = nil
+                    self.downloadProgress = 1.0
                     self.loadLocalVideos()
+                    print("Download completed successfully!")
                 }
             } catch {
-                print("Error saving downloaded file: \(error)")
+                print("ERROR: Failed to move file: \(error)")
                 DispatchQueue.main.async {
                     self.downloadingVideoID = nil
+                    self.downloadProgress = 0.0
                 }
             }
         }
         
-        observation = task.progress.observe(\.fractionCompleted) { progress, _ in
+        // Simpler progress observation
+        observation = task.progress.observe(\.fractionCompleted, options: [.new, .initial]) { progress, _ in
+            let progressValue = Float(progress.fractionCompleted)
+            let completed = progress.completedUnitCount
+            let total = progress.totalUnitCount
+            
+            print("Progress: \(Int(progressValue * 100))% (\(completed)/\(total) bytes)")
+            
             DispatchQueue.main.async {
-                self.downloadProgress = Float(progress.fractionCompleted)
+                self.downloadProgress = progressValue
             }
         }
         
         downloadTask = task
         task.resume()
+        
+        print("Download task started")
     }
     
     private func cancelDownload() {
+        print("Cancelling download")
         downloadTask?.cancel()
         observation?.invalidate()
         downloadingVideoID = nil
         downloadTask = nil
         observation = nil
+        downloadProgress = 0.0
     }
     
     private func deleteVideo(_ video: LocalVideo) {

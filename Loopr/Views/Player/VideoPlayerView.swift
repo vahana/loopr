@@ -51,7 +51,14 @@ struct VideoPlayerView: View {
             
             VStack(spacing: 0) {
                 videoTitleBar
-                videoPlayer
+                
+                // Use a simple view with AVPlayerLayer instead of VideoPlayer
+                AVPlayerLayerView(player: player)
+                    .aspectRatio(UI.aspectRatio, contentMode: .fit)
+                    .onTapGesture(count: 1) {
+                        viewModel.togglePlayPause()
+                    }
+                
                 VideoProgressBarView(viewModel: viewModel)
                 VideoControlBarView(viewModel: viewModel, focusedControl: _focusedControl)
             }
@@ -105,176 +112,200 @@ struct VideoPlayerView: View {
             return .handled
         }
         .onKeyPress(.escape) {
-                    handleMenuButtonPress()
-                    return .handled
-                }
-                .onKeyPress(.space) {
-                    viewModel.togglePlayPause()
-                    return .handled
-                }
+            handleMenuButtonPress()
+            return .handled
+        }
+        .onKeyPress(.space) {
+            viewModel.togglePlayPause()
+            return .handled
+        }
+    }
+    
+    // MARK: - UI Components
+    
+    /// Video title bar at the top
+    private var videoTitleBar: some View {
+        HStack {
+            Text(video.title)
+                .font(.headline)
+                .foregroundColor(.white)
+        }
+        .padding(UI.topBarPadding)
+        .background(Color.black.opacity(0.8))
+    }
+    
+    // MARK: - Event Handlers
+    
+    /// Handle view appearance
+    private func handleAppear() {
+        setupPlayer()
+        recordVideoPlayed()
+        setInitialFocus()
+    }
+    
+    /// Handle view disappearance
+    private func handleDisappear() {
+        player.pause()
+        saveVideoPosition()
+    }
+    
+    /// Handle menu button press (with double-press detection for loop mode)
+    private func handleMenuButtonPress() {
+        saveVideoPosition()
+        
+        if viewModel.isLooping {
+            if let lastPress = lastMenuPressTime,
+               Date().timeIntervalSince(lastPress) < UI.doublePressThreshold {
+                // Double-press detected, exit video
+                onBack()
+            } else {
+                // First press, just disable looping
+                viewModel.isLooping = false
+                lastMenuPressTime = Date()
             }
+        } else {
+            // Not in loop mode, exit immediately
+            onBack()
+        }
+    }
+    
+    // MARK: - Helper Methods
+    
+    /// Set up the player and load video
+    private func setupPlayer() {
+        networkManager.loadVideoWithCache(from: video.url) { finalURL in
+            // Create player with final URL (cached or original)
+            let player = AVPlayer(url: finalURL)
+            self.player = player
+            self.viewModel.player = player
             
-            // MARK: - UI Components
+            // Explicitly set the player to paused state initially
+            player.pause()
+            self.viewModel.isPlaying = false
             
-            /// Video title bar at the top
-            private var videoTitleBar: some View {
-                HStack {
-                    Text(video.title)
-                        .font(.headline)
-                        .foregroundColor(.white)
-                }
-                .padding(UI.topBarPadding)
-                .background(Color.black.opacity(0.8))
-            }
-            
-            /// Main video player component
-            private var videoPlayer: some View {
-                VideoPlayer(player: player) {
-                    EmptyView()
-                }
-                .aspectRatio(UI.aspectRatio, contentMode: .fit)
-                .onTapGesture(count: 1) {
-                    viewModel.togglePlayPause()
-                }
-            }
-            
-            // MARK: - Event Handlers
-            
-            /// Handle view appearance
-            private func handleAppear() {
-                setupPlayer()
-                recordVideoPlayed()
-                setInitialFocus()
-            }
-            
-            /// Handle view disappearance
-            private func handleDisappear() {
-                player.pause()
-                saveVideoPosition()
-            }
-            
-            /// Handle menu button press (with double-press detection for loop mode)
-            private func handleMenuButtonPress() {
-                saveVideoPosition()
+            // Load video metadata asynchronously
+            loadVideoMetadata(player: player)
+        }
+    }
+    
+    /// Load video metadata (duration, marks)
+    private func loadVideoMetadata(player: AVPlayer) {
+        guard let asset = player.currentItem?.asset else { return }
+        
+        Task {
+            do {
+                let durationValue = try await asset.load(.duration)
+                let seconds = durationValue.seconds
                 
-                if viewModel.isLooping {
-                    if let lastPress = lastMenuPressTime,
-                       Date().timeIntervalSince(lastPress) < UI.doublePressThreshold {
-                        // Double-press detected, exit video
-                        onBack()
-                    } else {
-                        // First press, just disable looping
-                        viewModel.isLooping = false
-                        lastMenuPressTime = Date()
+                if isValidDuration(seconds) {
+                    await MainActor.run {
+                        viewModel.duration = seconds
+                        setupDefaultMarksIfNeeded(duration: seconds)
+                        restorePreviousPosition(duration: seconds)
                     }
                 } else {
-                    // Not in loop mode, exit immediately
-                    onBack()
-                }
-            }
-            
-            // MARK: - Helper Methods
-            
-            /// Set up the player and load video
-            private func setupPlayer() {
-                networkManager.loadVideoWithCache(from: video.url) { finalURL in
-                    // Create player with final URL (cached or original)
-                    let player = AVPlayer(url: finalURL)
-                    self.player = player
-                    self.viewModel.player = player
-                    
-                    // Explicitly set the player to paused state initially
-                    player.pause()
-                    self.viewModel.isPlaying = false
-                    
-                    // Load video metadata asynchronously
-                    loadVideoMetadata(player: player)
-                    
-                    // Don't auto-play - let user press play first
-                    // player.play()
-                }
-            }
-            /// Load video metadata (duration, marks)
-            private func loadVideoMetadata(player: AVPlayer) {
-                guard let asset = player.currentItem?.asset else { return }
-                
-                Task {
-                    do {
-                        let durationValue = try await asset.load(.duration)
-                        let seconds = durationValue.seconds
-                        
-                        if isValidDuration(seconds) {
-                            viewModel.duration = seconds
-                            setupDefaultMarksIfNeeded(duration: seconds)
-                            restorePreviousPosition(duration: seconds)
-                        } else {
-                            handleInvalidDuration(seconds)
-                        }
-                    } catch {
-                        print("Failed to load duration: \(error)")
-                        viewModel.duration = 0
+                    await MainActor.run {
+                        handleInvalidDuration(seconds)
                     }
                 }
-            }
-            
-            /// Check if duration is valid and usable
-            private func isValidDuration(_ duration: Double) -> Bool {
-                return duration.isFinite && !duration.isNaN && duration > 0
-            }
-            
-            /// Initialize default marks at start and end if none exist
-            private func setupDefaultMarksIfNeeded(duration: Double) {
-                if viewModel.loopMarks.isEmpty {
-                    // Get frame rate for better precision
-                    let frameRate: Float = 30
-                    let frameDuration = 1.0 / Double(frameRate)
-                    
-                    // Round duration to frame boundary
-                    let roundedDuration = floor(duration / frameDuration) * frameDuration
-                    
-                    // Set marks at exact frame boundaries
-                    viewModel.loopMarks = [0, roundedDuration]
-                }
-            }
-            
-            /// Restore previous position if available
-            private func restorePreviousPosition(duration: Double) {
-                guard let savedPosition = VideoPositionManager.shared.getPosition(for: video.url),
-                      savedPosition > 0 && savedPosition < (duration - UI.minimumTimeFromEnd) else {
-                    return
-                }
-                
-                Task {
-                    // Capture player reference before async operation
-                    let playerRef = player
-                    await playerRef.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600))
-                    viewModel.currentTime = savedPosition
-                    print("Restored video position to \(viewModel.formatTime(savedPosition))")
-                }
-            }
-            
-            /// Handle case where duration is invalid
-            private func handleInvalidDuration(_ duration: Double) {
-                viewModel.duration = 0
-                print("Warning: Invalid duration value: \(duration)")
-            }
-            
-            /// Record that this video was played in history
-            private func recordVideoPlayed() {
-                VideoCacheManager.shared.updateLastPlayed(for: video.url)
-            }
-            
-            /// Set initial focus on seek button
-            private func setInitialFocus() {
-                DispatchQueue.main.asyncAfter(deadline: .now() + UI.initialFocusDelay) {
-                    focusedControl = .seekForward
-                }
-            }
-            
-            /// Save current position before exiting
-            private func saveVideoPosition() {
-                if viewModel.currentTime > 0 {
-                    VideoPositionManager.shared.savePosition(viewModel.currentTime, for: video.url)
+            } catch {
+                print("Failed to load duration: \(error)")
+                await MainActor.run {
+                    viewModel.duration = 0
                 }
             }
         }
+    }
+    
+    /// Check if duration is valid and usable
+    private func isValidDuration(_ duration: Double) -> Bool {
+        return duration.isFinite && !duration.isNaN && duration > 0
+    }
+    
+    /// Initialize default marks at start and end if none exist
+    private func setupDefaultMarksIfNeeded(duration: Double) {
+        if viewModel.loopMarks.isEmpty {
+            // Get frame rate for better precision
+            let frameRate: Float = 30
+            let frameDuration = 1.0 / Double(frameRate)
+            
+            // Round duration to frame boundary
+            let roundedDuration = floor(duration / frameDuration) * frameDuration
+            
+            // Set marks at exact frame boundaries
+            viewModel.loopMarks = [0, roundedDuration]
+        }
+    }
+    
+    /// Restore previous position if available
+    private func restorePreviousPosition(duration: Double) {
+        guard let savedPosition = VideoPositionManager.shared.getPosition(for: video.url),
+              savedPosition > 0 && savedPosition < (duration - UI.minimumTimeFromEnd) else {
+            return
+        }
+        
+        Task {
+            // Capture player reference before async operation
+            let playerRef = player
+            await playerRef.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600))
+            await MainActor.run {
+                viewModel.currentTime = savedPosition
+                print("Restored video position to \(viewModel.formatTime(savedPosition))")
+            }
+        }
+    }
+    
+    /// Handle case where duration is invalid
+    private func handleInvalidDuration(_ duration: Double) {
+        viewModel.duration = 0
+        print("Warning: Invalid duration value: \(duration)")
+    }
+    
+    /// Record that this video was played in history
+    private func recordVideoPlayed() {
+        VideoCacheManager.shared.updateLastPlayed(for: video.url)
+    }
+    
+    /// Set initial focus on seek button
+    private func setInitialFocus() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + UI.initialFocusDelay) {
+            focusedControl = .seekForward
+        }
+    }
+    
+    /// Save current position before exiting
+    private func saveVideoPosition() {
+        if viewModel.currentTime > 0 {
+            VideoPositionManager.shared.savePosition(viewModel.currentTime, for: video.url)
+        }
+    }
+}
+
+// Custom AVPlayerLayer view to avoid VideoPlayer constraints
+struct AVPlayerLayerView: UIViewRepresentable {
+    let player: AVPlayer
+    
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = UIColor.black
+        
+        let playerLayer = AVPlayerLayer(player: player)
+        playerLayer.videoGravity = .resizeAspect
+        view.layer.addSublayer(playerLayer)
+        
+        return view
+    }
+    
+    func updateUIView(_ uiView: UIView, context: Context) {
+        if let playerLayer = uiView.layer.sublayers?.first as? AVPlayerLayer {
+            playerLayer.player = player
+            playerLayer.frame = uiView.bounds
+        }
+    }
+    
+    static func dismantleUIView(_ uiView: UIView, coordinator: ()) {
+        if let playerLayer = uiView.layer.sublayers?.first as? AVPlayerLayer {
+            playerLayer.player = nil
+        }
+    }
+}

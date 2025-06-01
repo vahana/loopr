@@ -77,15 +77,10 @@ struct VideoListView: View {
     
     private func loadVideosInBackground() async -> [Video] {
         let cacheManager = VideoCacheManager.shared
-                
         var videos: [Video] = []
         
-        // Load from cache directory (migrated files)
+        // Load from cache directory only (all videos are now stored here)
         videos.append(contentsOf: await loadVideosFromDirectory(cacheManager.cacheDirectory))
-        
-        // Load from documents directory (new downloads)
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        videos.append(contentsOf: await loadVideosFromDirectory(documentsPath))
         
         // Remove duplicates and sort
         let uniqueVideos = Dictionary(grouping: videos, by: { $0.title }).compactMap { $1.first }
