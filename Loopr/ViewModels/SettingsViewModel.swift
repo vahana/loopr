@@ -3,12 +3,12 @@ import AVKit
 
 // View Model for the Settings View
 class SettingsViewModel: ObservableObject {
-    @Published var cachedVideos: [CachedVideoItem] = []
+    @Published var downloadedVideos: [CachedVideoItem] = []
     @Published var isLoading = false
-    @Published var totalCacheSize = "0 MB"
-    @Published var isCachingEnabled = true
+    @Published var totalDownloadsSize = "0 MB"
+    @Published var isDownloadsEnabled = true
     
-    private let cacheManager = VideoCacheManager.shared
+    private let downloadManager = VideoDownloadManager.shared
     private let formatter = ByteCountFormatter()
     private let dateFormatter = DateFormatter()
     
@@ -19,18 +19,18 @@ class SettingsViewModel: ObservableObject {
         formatter.countStyle = .file
         
         // Load saved preferences
-        isCachingEnabled = UserDefaults.standard.bool(forKey: "videoCachingEnabled")
+        isDownloadsEnabled = UserDefaults.standard.bool(forKey: "videoDownloadsEnabled")
     }
     
-    func toggleCaching(enabled: Bool) {
-        UserDefaults.standard.set(enabled, forKey: "videoCachingEnabled")
+    func toggleDownloads(enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "videoDownloadsEnabled")
         if !enabled {
-            // Optionally clear cache when disabling
-            // clearAllCache()
+            // Optionally clear downloads when disabling
+            // clearAllDownloads()
         }
     }
     
-    func loadCachedVideos() {
+    func loadDownloadedVideos() {
         isLoading = true
         
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -38,7 +38,7 @@ class SettingsViewModel: ObservableObject {
             
             do {
                 let fileURLs = try FileManager.default.contentsOfDirectory(
-                    at: self.cacheManager.cacheDirectory,
+                    at: self.downloadManager.downloadsDirectory,
                     includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey],
                     options: [.skipsHiddenFiles]
                 )
@@ -69,49 +69,49 @@ class SettingsViewModel: ObservableObject {
                 videos.sort { $0.date > $1.date }
                 
                 DispatchQueue.main.async {
-                    self.cachedVideos = videos
-                    self.totalCacheSize = self.formatter.string(fromByteCount: totalSize)
+                    self.downloadedVideos = videos
+                    self.totalDownloadsSize = self.formatter.string(fromByteCount: totalSize)
                     self.isLoading = false
                 }
                 
             } catch {
-                print("Error loading cached videos: \(error)")
+                print("Error loading downloaded videos: \(error)")
                 DispatchQueue.main.async {
-                    self.cachedVideos = []
+                    self.downloadedVideos = []
                     self.isLoading = false
                 }
             }
         }
     }
     
-    func deleteCache(for video: CachedVideoItem) {
+    func deleteDownload(for video: CachedVideoItem) {
         do {
             try FileManager.default.removeItem(at: video.url)
             
             // Update UI
             DispatchQueue.main.async {
-                self.cachedVideos.removeAll { $0.id == video.id }
-                self.updateTotalCacheSize()
+                self.downloadedVideos.removeAll { $0.id == video.id }
+                self.updateTotalDownloadsSize()
             }
         } catch {
-            print("Error deleting cache: \(error)")
+            print("Error deleting download: \(error)")
         }
     }
     
-    func clearAllCache() {
-        cacheManager.clearCache()
+    func clearAllDownloads() {
+        downloadManager.clearAllDownloads()
         
         // Update UI
         DispatchQueue.main.async {
-            self.cachedVideos = []
-            self.totalCacheSize = "0 MB"
+            self.downloadedVideos = []
+            self.totalDownloadsSize = "0 MB"
         }
     }
     
-    private func updateTotalCacheSize() {
+    private func updateTotalDownloadsSize() {
         var totalSize: Int64 = 0
         
-        for video in cachedVideos {
+        for video in downloadedVideos {
             do {
                 let resourceValues = try video.url.resourceValues(forKeys: [.fileSizeKey])
                 if let fileSize = resourceValues.fileSize {
@@ -122,7 +122,7 @@ class SettingsViewModel: ObservableObject {
             }
         }
         
-        totalCacheSize = formatter.string(fromByteCount: totalSize)
+        totalDownloadsSize = formatter.string(fromByteCount: totalSize)
     }
     
     func formatDate(_ date: Date) -> String {

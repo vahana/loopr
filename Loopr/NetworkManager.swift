@@ -57,8 +57,8 @@ class NetworkManager: ObservableObject {
     private func loadOfflineVideos() {
         var offlineVideos: [Video] = []
         
-        let cachedVideos = loadCachedVideos()
-        offlineVideos.append(contentsOf: cachedVideos)
+        let downloadedVideos = loadDownloadedVideos()
+        offlineVideos.append(contentsOf: downloadedVideos)
         
         let uniqueVideos = Dictionary(grouping: offlineVideos, by: { $0.title }).compactMap { $1.first }
         
@@ -71,13 +71,13 @@ class NetworkManager: ObservableObject {
         self.videos = offlineVideos
     }
     
-    private func loadCachedVideos() -> [Video] {
-        let cacheManager = VideoCacheManager.shared
-        var cachedVideos: [Video] = []
+    private func loadDownloadedVideos() -> [Video] {
+        let downloadManager = VideoDownloadManager.shared
+        var downloadedVideos: [Video] = []
         
         do {
             let fileURLs = try FileManager.default.contentsOfDirectory(
-                at: cacheManager.cacheDirectory,
+                at: downloadManager.downloadsDirectory,
                 includingPropertiesForKeys: [.contentModificationDateKey],
                 options: [.skipsHiddenFiles]
             )
@@ -113,22 +113,22 @@ class NetworkManager: ObservableObject {
                     description: videoDescription,
                     url: fileURL
                 )
-                cachedVideos.append(video)
+                downloadedVideos.append(video)
             }
             
-            cachedVideos.sort { video1, video2 in
-                guard let date1 = cacheManager.getLastPlayed(for: video1.url),
-                      let date2 = cacheManager.getLastPlayed(for: video2.url) else {
+            downloadedVideos.sort { video1, video2 in
+                guard let date1 = downloadManager.getLastPlayed(for: video1.url),
+                      let date2 = downloadManager.getLastPlayed(for: video2.url) else {
                     return false
                 }
                 return date1 > date2
             }
             
         } catch {
-            print("Error loading cached videos: \(error)")
+            print("Error loading downloaded videos: \(error)")
         }
         
-        return cachedVideos
+        return downloadedVideos
     }
     
     private func getSampleVideos() -> [Video] {
@@ -182,7 +182,7 @@ class NetworkManager: ObservableObject {
                     UserDefaults.standard.set(videoMetadata, forKey: "videoMetadata")
                     print("Saved metadata for \(videoMetadata.count) videos")
                     
-                    self?.videos = videoItems.map { item in
+                    let newVideos = videoItems.map { item in
                         let videoURL = serverURL.appendingPathComponent(item.path)
                         let thumbnailURL = item.thumbnail.map { serverURL.appendingPathComponent($0) }
                         
@@ -193,6 +193,15 @@ class NetworkManager: ObservableObject {
                             url: videoURL
                         )
                     }
+                    
+                    // Merge new videos with existing ones, avoiding duplicates based on URL
+                    var mergedVideos = self?.videos ?? []
+                    for newVideo in newVideos {
+                        if !mergedVideos.contains(where: { $0.url == newVideo.url }) {
+                            mergedVideos.append(newVideo)
+                        }
+                    }
+                    self?.videos = mergedVideos
                 } catch {
                     self?.error = "Failed to parse videos: \(error.localizedDescription)"
                 }
@@ -200,24 +209,32 @@ class NetworkManager: ObservableObject {
         }.resume()
     }
     
-    func loadVideoWithCache(from url: URL, completion: @escaping (URL) -> Void) {
-        if VideoCacheManager.shared.isCachingEnabled {
-            // Always check for fresh cached URL, don't trust previous references
-            if let cachedURL = VideoCacheManager.shared.getCachedURL(for: url) {
-                // Verify the cached file still exists and is readable
-                if FileManager.default.fileExists(atPath: cachedURL.path) &&
-                   VideoCacheManager.shared.verifyVideoFile(at: cachedURL) {
-                    completion(cachedURL)
+    func loadVideoWithDownload(from url: URL, completion: @escaping (URL) -> Void) {
+        // Check if this is already a local downloaded file
+        if url.isFileURL && FileManager.default.fileExists(atPath: url.path) {
+            // This is already a downloaded file, use it directly
+            completion(url)
+            return
+        }
+        
+        // This is a server URL, check if we have a downloaded version
+        if VideoDownloadManager.shared.isDownloadsEnabled {
+            // Always check for fresh downloaded URL, don't trust previous references
+            if let downloadedURL = VideoDownloadManager.shared.getDownloadedURL(for: url) {
+                // Verify the downloaded file still exists and is readable
+                if FileManager.default.fileExists(atPath: downloadedURL.path) &&
+                   VideoDownloadManager.shared.verifyVideoFile(at: downloadedURL) {
+                    completion(downloadedURL)
                     return
                 } else {
-                    // Cached file is missing or corrupted, remove stale reference and download again
-                    VideoCacheManager.shared.deleteCache(for: url)
+                    // Downloaded file is missing or corrupted, remove stale reference and download again
+                    VideoDownloadManager.shared.deleteDownload(for: url)
                 }
             }
             
-            VideoCacheManager.shared.cacheVideo(from: url) { cachedURL in
-                if let cachedURL = cachedURL {
-                    completion(cachedURL)
+            VideoDownloadManager.shared.downloadVideo(from: url) { downloadedURL in
+                if let downloadedURL = downloadedURL {
+                    completion(downloadedURL)
                 } else {
                     completion(url)
                 }
@@ -227,19 +244,19 @@ class NetworkManager: ObservableObject {
         }
     }
     
-    func isVideoCached(video: Video) -> Bool {
-        return VideoCacheManager.shared.isVideoCached(for: video.url)
+    func isVideoDownloaded(video: Video) -> Bool {
+        return VideoDownloadManager.shared.isVideoDownloaded(for: video.url)
     }
     
-    func cacheVideo(video: Video, completion: @escaping (Bool) -> Void) {
-        VideoCacheManager.shared.cacheVideo(from: video.url) { cachedURL in
-            completion(cachedURL != nil)
+    func downloadVideo(video: Video, completion: @escaping (Bool) -> Void) {
+        VideoDownloadManager.shared.downloadVideo(from: video.url) { downloadedURL in
+            completion(downloadedURL != nil)
         }
     }
     
-    func deleteCacheForVideo(video: Video) {
-        let cachedURL = VideoCacheManager.shared.cachedFileURL(for: video.url)
-        try? FileManager.default.removeItem(at: cachedURL)
+    func deleteDownloadForVideo(video: Video) {
+        let downloadedURL = VideoDownloadManager.shared.downloadedFileURL(for: video.url)
+        try? FileManager.default.removeItem(at: downloadedURL)
     }
     
     func scanLocalNetwork() {

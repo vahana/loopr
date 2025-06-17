@@ -76,18 +76,18 @@ struct VideoListView: View {
     }
     
     private func loadVideosInBackground() async -> [Video] {
-        let cacheManager = VideoCacheManager.shared
+        let downloadManager = VideoDownloadManager.shared
         var videos: [Video] = []
         
-        // Load from cache directory only (all videos are now stored here)
-        videos.append(contentsOf: await loadVideosFromDirectory(cacheManager.cacheDirectory))
+        // Load from downloads directory only (all videos are now stored here)
+        videos.append(contentsOf: await loadVideosFromDirectory(downloadManager.downloadsDirectory))
         
         // Remove duplicates and sort
         let uniqueVideos = Dictionary(grouping: videos, by: { $0.title }).compactMap { $1.first }
         
         return uniqueVideos.sorted { video1, video2 in
-            let date1 = cacheManager.getLastPlayed(for: video1.url) ?? .distantPast
-            let date2 = cacheManager.getLastPlayed(for: video2.url) ?? .distantPast
+            let date1 = downloadManager.getLastPlayed(for: video1.url) ?? .distantPast
+            let date2 = downloadManager.getLastPlayed(for: video2.url) ?? .distantPast
             return date1 > date2
         }
     }
@@ -191,7 +191,7 @@ struct VideoRow: View {
                             .font(.caption)
                     }
                     
-                    if let lastPlayed = VideoCacheManager.shared.getLastPlayed(for: video.url) {
+                    if let lastPlayed = VideoDownloadManager.shared.getLastPlayed(for: video.url) {
                         Text("Last played: \(formatDate(lastPlayed))")
                             .font(.caption)
                             .foregroundColor(.gray)

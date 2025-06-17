@@ -1,5 +1,6 @@
 import SwiftUI
 import AVKit
+import AVFAudio
 
 /// ViewModel for video control functionality
 class VideoControlBarViewModel: ObservableObject {
@@ -21,6 +22,8 @@ class VideoControlBarViewModel: ObservableObject {
     @Published var isTimerRunning = false
     @Published var loopTimerActive: Bool = false
     @Published var loopTimeRemaining: Double = 30.0
+    @Published var isTransitionCounterActive: Bool = false
+    @Published var transitionTimeRemaining: Double = 5.0
     
     // Track the current index in the step size options
     private var currentStepSizeIndex: Int = SeekStepSizes.defaultIndex
@@ -40,6 +43,9 @@ class VideoControlBarViewModel: ObservableObject {
     // FIX: Add debounce properties
     private var lastLoopSeekTime: Double = 0
     private let loopSeekDebounceInterval: Double = 1.0
+    
+    // Audio feedback properties
+    private var lastCountdownSecond: Int = -1
     
     // MARK: - Initialization
     init(player: AVPlayer, videoURL: URL? = nil) {
@@ -338,6 +344,7 @@ class VideoControlBarViewModel: ObservableObject {
             moveToCurrentSegment()
         } else {
             loopTimerActive = false
+            isTransitionCounterActive = false
         }
     }
     
@@ -435,9 +442,12 @@ class VideoControlBarViewModel: ObservableObject {
             }
         }
         
-        // Only handle loop boundaries if we're in loop mode
-        if isPlaying && isLooping {
-            handleLoopBoundaries()
+        // Handle loop mode logic
+        if isLooping {
+            if isPlaying {
+                handleLoopBoundaries()
+            }
+            // Always update timers when in loop mode (including during transition counter)
             updateLoopTimer()
         }
     }
@@ -576,6 +586,9 @@ class VideoControlBarViewModel: ObservableObject {
     private func resetLoopTimer() {
         loopTimerActive = true
         loopTimeRemaining = 30.0
+        isTransitionCounterActive = false
+        transitionTimeRemaining = 5.0
+        lastCountdownSecond = -1  // Reset countdown sound tracking
     }
     
     private func moveToCurrentSegment() {
@@ -670,16 +683,43 @@ class VideoControlBarViewModel: ObservableObject {
         if loopTimerActive && isPlaying {
             loopTimeRemaining -= 0.5
             
+            // Play countdown sounds for last 5 seconds
+            let currentSecond = Int(ceil(loopTimeRemaining))
+            if currentSecond <= 5 && currentSecond > 0 && currentSecond != lastCountdownSecond {
+                if currentSecond == 1 {
+                    // Distinct sound for final second
+                    playCountdownSound(isFinalSecond: true)
+                } else {
+                    // Regular countdown sound for seconds 2-5
+                    playCountdownSound(isFinalSecond: false)
+                }
+                lastCountdownSecond = currentSecond
+            }
+            
             if loopTimeRemaining <= 0 {
-                print("Loop timer expired, advancing to next segment")
-                let wasPlaying = isPlaying
+                print("Loop timer expired, starting transition counter")
                 
+                // Pause the video
                 if isPlaying {
                     player.pause()
                     isPlaying = false
                 }
                 
-                // Advance to the next segment when timer expires
+                // Start transition counter
+                loopTimerActive = false
+                isTransitionCounterActive = true
+                transitionTimeRemaining = 5.0
+            }
+        }
+        
+        // Handle transition counter
+        if isTransitionCounterActive {
+            transitionTimeRemaining -= 0.5
+            
+            if transitionTimeRemaining <= 0 {
+                print("Transition counter finished, advancing to next segment")
+                
+                // Advance to the next segment
                 if currentSegmentIndex < loopMarks.count - 2 {
                     currentSegmentIndex += 1
                 } else {
@@ -689,17 +729,30 @@ class VideoControlBarViewModel: ObservableObject {
                 // Move to the new segment
                 moveToCurrentSegment()
                 
-                // Resume playback
-                if wasPlaying {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        self.player.play()
-                        self.isPlaying = true
-                    }
+                // Resume playback and reset loop timer
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    self.player.play()
+                    self.isPlaying = true
                 }
                 
-                // Reset timer for the new segment
+                // Reset both timers
+                isTransitionCounterActive = false
                 resetLoopTimer()
             }
+        }
+    }
+    
+    /// Play countdown sound effect
+    private func playCountdownSound(isFinalSecond: Bool) {
+        if isFinalSecond {
+            // Use a more prominent system sound for the final second
+            AudioServicesPlaySystemSound(1016) // SMS Alert sound - more prominent
+            // Also play system alert sound for extra prominence
+            AudioServicesPlayAlertSound(1016)
+        } else {
+            // Use a more prominent beep for countdown seconds 2-5
+            AudioServicesPlaySystemSound(1009) // Begin recording sound - more prominent
+            AudioServicesPlayAlertSound(1009)
         }
     }
 }

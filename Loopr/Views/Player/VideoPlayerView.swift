@@ -53,11 +53,24 @@ struct VideoPlayerView: View {
                 videoTitleBar
                 
                 // Use a simple view with AVPlayerLayer instead of VideoPlayer
-                AVPlayerLayerView(player: player)
-                    .aspectRatio(UI.aspectRatio, contentMode: .fit)
-                    .onTapGesture(count: 1) {
-                        viewModel.togglePlayPause()
+                ZStack {
+                    AVPlayerLayerView(player: player)
+                        .aspectRatio(UI.aspectRatio, contentMode: .fit)
+                        .onTapGesture(count: 1) {
+                            viewModel.togglePlayPause()
+                        }
+                    
+                    // Large countdown overlay in top right corner
+                    VStack {
+                        HStack {
+                            Spacer()
+                            LoopCountdownOverlayView(viewModel: viewModel)
+                                .padding(.top, 0)
+                                .padding(.trailing, 30)
+                        }
+                        Spacer()
                     }
+                }
                 
                 VideoProgressBarView(viewModel: viewModel)
                 VideoControlBarView(viewModel: viewModel, focusedControl: _focusedControl)
@@ -177,7 +190,7 @@ struct VideoPlayerView: View {
         // Clean up existing player first
         cleanupPlayer()
         
-        networkManager.loadVideoWithCache(from: video.url) { finalURL in
+        networkManager.loadVideoWithDownload(from: video.url) { finalURL in
             DispatchQueue.main.async {
                 // Create a fresh player with the final URL
                 let newPlayer = AVPlayer(url: finalURL)
@@ -275,7 +288,7 @@ struct VideoPlayerView: View {
     
     /// Record that this video was played in history
     private func recordVideoPlayed() {
-        VideoCacheManager.shared.updateLastPlayed(for: video.url)
+        VideoDownloadManager.shared.updateLastPlayed(for: video.url)
     }
     
     /// Set initial focus on seek button

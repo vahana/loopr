@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
@@ -279,18 +280,18 @@ struct SettingsView: View {
     }
     
     private func loadAllVideos() async -> [Video] {
-        let cacheManager = VideoCacheManager.shared
+        let downloadManager = VideoDownloadManager.shared
         var videos: [Video] = []
         
-        // Load from cache directory only (all videos are now stored here)
-        videos.append(contentsOf: await loadVideosFromDirectory(cacheManager.cacheDirectory))
+        // Load from downloads directory only (all videos are now stored here)
+        videos.append(contentsOf: await loadVideosFromDirectory(downloadManager.downloadsDirectory))
         
         // Remove duplicates
         let uniqueVideos = Dictionary(grouping: videos, by: { $0.title }).compactMap { $1.first }
         
         return uniqueVideos.sorted { video1, video2 in
-            let date1 = cacheManager.getLastPlayed(for: video1.url) ?? .distantPast
-            let date2 = cacheManager.getLastPlayed(for: video2.url) ?? .distantPast
+            let date1 = downloadManager.getLastPlayed(for: video1.url) ?? .distantPast
+            let date2 = downloadManager.getLastPlayed(for: video2.url) ?? .distantPast
             return date1 > date2
         }
     }
@@ -340,10 +341,10 @@ struct SettingsView: View {
     }
     
     private func isVideoDownloaded(_ video: Video) -> Bool {
-        // Check cache directory instead of documents
-        let cacheManager = VideoCacheManager.shared
+        // Check downloads directory instead of documents
+        let downloadManager = VideoDownloadManager.shared
         let filename = "\(video.title).mp4"
-        let localURL = cacheManager.cacheDirectory.appendingPathComponent(filename)
+        let localURL = downloadManager.downloadsDirectory.appendingPathComponent(filename)
         return FileManager.default.fileExists(atPath: localURL.path)
     }
     
@@ -402,10 +403,10 @@ struct SettingsView: View {
     private func performActualDownload(_ video: Video) {
         print("Starting actual download...")
         
-        // Use cache directory
-        let cacheManager = VideoCacheManager.shared
+        // Use downloads directory
+        let downloadManager = VideoDownloadManager.shared
         let filename = "\(video.title).mp4"
-        let destinationURL = cacheManager.cacheDirectory.appendingPathComponent(filename)
+        let destinationURL = downloadManager.downloadsDirectory.appendingPathComponent(filename)
         
         print("Destination: \(destinationURL.path)")
         
@@ -520,13 +521,11 @@ struct SettingsView: View {
         }
         
         // Simpler progress observation
-        observation = task.progress.observe(\.fractionCompleted, options: [.new, .initial]) { progress, _ in
+        observation = task.progress.observe(\.fractionCompleted, options: [.new, .initial]) { (progress, _) in
             let progressValue = Float(progress.fractionCompleted)
             let completed = progress.completedUnitCount
             let total = progress.totalUnitCount
-            
-            print("Progress: \(Int(progressValue * 100))% (\(completed)/\(total) bytes)")
-            
+                        
             DispatchQueue.main.async {
                 self.downloadProgress = progressValue
             }

@@ -105,11 +105,6 @@ struct VideoControlBarView: View {
                         .font(.caption)
                         .foregroundColor(.white)
                     
-                    if viewModel.loopTimerActive {
-                        Text("(\(viewModel.formatLoopTimeRemaining()))")
-                            .font(.caption)
-                            .foregroundColor(.yellow)
-                    }
                 }
                 .padding(UI.indicatorPadding)
                 .background(Color.black.opacity(0.5))
