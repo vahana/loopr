@@ -55,7 +55,7 @@ struct VideoPlayerView: View {
                 // Use a simple view with AVPlayerLayer instead of VideoPlayer
                 ZStack {
                     AVPlayerLayerView(player: player)
-                        .aspectRatio(UI.aspectRatio, contentMode: .fit)
+                        .clipped()
                         .onTapGesture(count: 1) {
                             viewModel.togglePlayPause()
                         }
@@ -318,7 +318,7 @@ struct AVPlayerLayerView: UIViewRepresentable {
         view.backgroundColor = UIColor.black
         
         let playerLayer = AVPlayerLayer(player: player)
-        playerLayer.videoGravity = .resizeAspect
+        playerLayer.videoGravity = .resizeAspectFill
         view.layer.addSublayer(playerLayer)
         
         return view
