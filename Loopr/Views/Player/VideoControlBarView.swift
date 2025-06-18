@@ -12,9 +12,9 @@ struct VideoControlBarView: View {
     
     // MARK: - UI Constants
     private enum UI {
-        static let buttonHeight: CGFloat = 40
-        static let seekButtonWidth: CGFloat = 50
-        static let controlButtonWidth: CGFloat = 40
+        static let buttonHeight: CGFloat = 60
+        static let seekButtonWidth: CGFloat = 60
+        static let controlButtonWidth: CGFloat = 60
         static let cornerRadius: CGFloat = 6
         static let spacing: CGFloat = 12
         static let controlSpacing: CGFloat = 8
@@ -205,13 +205,9 @@ struct VideoControlBarView: View {
         
         return Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: isFinetuneButton ? 14 : 20))
+                .font(.system(size: 20))
                 .frame(width: width, height: height)
-                .background(
-                    isFinetuneButton ?
-                        (isOnMark ? Color.black.opacity(0.7) : Color.gray.opacity(0.3)) :
-                        buttonBackgroundColor(for: focus, activeColor: activeColor)
-                )
+                .background(buttonBackgroundColor(for: focus, activeColor: activeColor))
                 .cornerRadius(UI.cornerRadius)
                 .opacity(isFinetuneButton && !isOnMark ? 0.5 : 1.0)
         }
