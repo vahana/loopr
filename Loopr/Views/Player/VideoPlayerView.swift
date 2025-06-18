@@ -60,13 +60,16 @@ struct VideoPlayerView: View {
                             viewModel.togglePlayPause()
                         }
                     
-                    // Large countdown overlay in top right corner
+                    // Overlays in top right corner
                     VStack {
                         HStack {
                             Spacer()
-                            LoopCountdownOverlayView(viewModel: viewModel)
-                                .padding(.top, 0)
-                                .padding(.trailing, 30)
+                            VStack(spacing: 10) {
+                                TimerOverlayView(viewModel: viewModel)
+                                LoopCountdownOverlayView(viewModel: viewModel)
+                            }
+                            .padding(.top, 0)
+                            .padding(.trailing, 30)
                         }
                         Spacer()
                     }

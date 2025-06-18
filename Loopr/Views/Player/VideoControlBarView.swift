@@ -122,21 +122,21 @@ struct VideoControlBarView: View {
                 action: viewModel.toggleMark
             )
             
-            // Fine-tune left button - smaller size in both dimensions
+            // Fine-tune left button
             controlButton(
                 for: .fineTuneLeft,
                 icon: "chevron.left",
-                width: 30,
-                height: 28,
+                width: 60,
+                height: 60,
                 action: viewModel.finetuneMarkLeft
             )
             
-            // Fine-tune right button - smaller size in both dimensions
+            // Fine-tune right button
             controlButton(
                 for: .fineTuneRight,
                 icon: "chevron.right",
-                width: 30,
-                height: 28,
+                width: 60,
+                height: 60,
                 action: viewModel.finetuneMarkRight
             )
             
@@ -153,8 +153,6 @@ struct VideoControlBarView: View {
     /// Timer controls
     private var timerControls: some View {
         HStack(spacing: 10) {
-            timerDisplay
-            
             controlButton(
                 for: .startTimer,
                 icon: "timer",
@@ -166,18 +164,6 @@ struct VideoControlBarView: View {
             clearMarksButton
         }
         .padding(.horizontal, 6)
-    }
-    
-    /// Timer display
-    private var timerDisplay: some View {
-        Text(formatTimerTime(viewModel.timerSeconds))
-            .font(.caption)
-            .foregroundColor(viewModel.isTimerRunning ? .yellow : .gray)
-            .frame(minWidth: 70)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color.black.opacity(0.5))
-            .cornerRadius(4)
     }
     
     /// Clear marks button
@@ -239,13 +225,6 @@ struct VideoControlBarView: View {
         focusedControl == focus
             ? Color.blue
             : (activeColor ?? Color.black.opacity(0.7))
-    }
-    
-    /// Format timer time as MM:SS
-    private func formatTimerTime(_ seconds: Int) -> String {
-        let minutes = seconds / 60
-        let secs = seconds % 60
-        return String(format: "%02d:%02d", minutes, secs)
     }
     
     /// Handle button click with simplified double-click detection for tvOS

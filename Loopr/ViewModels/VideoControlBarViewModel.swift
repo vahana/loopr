@@ -31,9 +31,6 @@ class VideoControlBarViewModel: ObservableObject {
     // MARK: - Properties
     var player: AVPlayer
     var videoURL: URL?
-    
-    // MARK: - Private Properties
-    private var timerStartDate: Date? = nil
     private var isSeekInProgress = false  // Flag to prevent overlapping seeks
     private var markProximityThreshold = 0.5  // How close to consider a mark
     private var playbackMarkThreshold = 0.2  // How close to pause at mark during playback
@@ -46,6 +43,9 @@ class VideoControlBarViewModel: ObservableObject {
     
     // Audio feedback properties
     private var lastCountdownSecond: Int = -1
+    
+    // Timer update tracking
+    private var timerUpdateCounter: Int = 0
     
     // MARK: - Initialization
     init(player: AVPlayer, videoURL: URL? = nil) {
@@ -414,17 +414,24 @@ class VideoControlBarViewModel: ObservableObject {
     
     // MARK: - Timer Controls
     
-    /// Start or reset the timer
+    /// Toggle timer on/off
     func startTimer() {
-        timerSeconds = 0
-        isTimerRunning = true
-        timerStartDate = Date()
+        isTimerRunning.toggle()
+        if !isTimerRunning {
+            timerSeconds = 0
+            timerUpdateCounter = 0
+        }
     }
     
     /// Update timer when called by timer
     func updateTimerState() {
-        if isTimerRunning, let startDate = timerStartDate {
-            timerSeconds = Int(Date().timeIntervalSince(startDate))
+        if isTimerRunning {
+            timerUpdateCounter += 1
+            // Timer runs every 0.5 seconds, so increment timerSeconds every 2 calls
+            if timerUpdateCounter >= 2 {
+                timerSeconds += 1
+                timerUpdateCounter = 0
+            }
         }
     }
     
