@@ -27,12 +27,18 @@ struct VideoControlBarView: View {
     var body: some View {
         HStack(spacing: UI.spacing) {
             transportControls
+            Spacer().frame(width: 18)
             Divider().frame(height: 30)
+            Spacer().frame(width: 18)
             loopControls
             loopIndicators
-            Spacer()
+            Spacer().frame(width: 18)
+            Divider().frame(height: 30)
+            Spacer().frame(width: 18)
             timerControls
         }
+        .frame(maxWidth: .infinity)
+        .multilineTextAlignment(.center)
         .padding(UI.barPadding)
         .background(Color.black.opacity(0.8))
         .alert("Clear All Marks", isPresented: $showClearMarksConfirmation) {
@@ -73,7 +79,7 @@ struct VideoControlBarView: View {
                 viewModel.toggleSeekStepSize()
             } label: {
                 Text(viewModel.formatSeekStepSize())
-                    .font(.system(size: 14))
+                    .font(.system(size: 20))
                     .frame(width: UI.seekButtonWidth, height: UI.buttonHeight)
                     .background(buttonBackgroundColor(for: .seekStepToggle))
                     .cornerRadius(UI.cornerRadius)

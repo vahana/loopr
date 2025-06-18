@@ -4,10 +4,15 @@ import AVFAudio
 
 /// ViewModel for video control functionality
 class VideoControlBarViewModel: ObservableObject {
-    // MARK: - Step Size Configuration
+    // MARK: - Configuration Constants
     private struct SeekStepSizes {
         static let options: [Double] = [0.5, 5.0, 30.0]
         static let defaultIndex: Int = 1  // Index for 5.0
+    }
+    
+    private struct TimerConstants {
+        static let loopDuration: Double = 30.0
+        static let transitionDuration: Double = 10.0
     }
     
     // MARK: - Published Properties
@@ -21,12 +26,15 @@ class VideoControlBarViewModel: ObservableObject {
     @Published var timerSeconds: Int = 0
     @Published var isTimerRunning = false
     @Published var loopTimerActive: Bool = false
-    @Published var loopTimeRemaining: Double = 30.0
+    @Published var loopTimeRemaining: Double = TimerConstants.loopDuration
     @Published var isTransitionCounterActive: Bool = false
-    @Published var transitionTimeRemaining: Double = 5.0
+    @Published var transitionTimeRemaining: Double = TimerConstants.transitionDuration
     
     // Track the current index in the step size options
     private var currentStepSizeIndex: Int = SeekStepSizes.defaultIndex
+    
+    // MARK: - Constants Access
+    var transitionDuration: Double { TimerConstants.transitionDuration }
     
     // MARK: - Properties
     var player: AVPlayer
@@ -592,9 +600,9 @@ class VideoControlBarViewModel: ObservableObject {
     
     private func resetLoopTimer() {
         loopTimerActive = true
-        loopTimeRemaining = 30.0
+        loopTimeRemaining = TimerConstants.loopDuration
         isTransitionCounterActive = false
-        transitionTimeRemaining = 5.0
+        transitionTimeRemaining = TimerConstants.transitionDuration
         lastCountdownSecond = -1  // Reset countdown sound tracking
     }
     
@@ -715,7 +723,7 @@ class VideoControlBarViewModel: ObservableObject {
                 // Start transition counter
                 loopTimerActive = false
                 isTransitionCounterActive = true
-                transitionTimeRemaining = 5.0
+                transitionTimeRemaining = TimerConstants.transitionDuration
             }
         }
         
