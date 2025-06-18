@@ -75,12 +75,9 @@ class VideoControlBarViewModel: ObservableObject {
         
         // Explicitly set player state based on isPlaying
         // Don't play during transition countdown
-        print("updatePlayerState - isPlaying: \(isPlaying), isTransitionCounterActive: \(isTransitionCounterActive)")
         if isPlaying && !isTransitionCounterActive {
-            print("updatePlayerState - calling player.play()")
             player.play()
         } else {
-            print("updatePlayerState - calling player.pause()")
             player.pause()
         }
     }
@@ -105,7 +102,6 @@ class VideoControlBarViewModel: ObservableObject {
                 
                 // Calculate bounded time
                 let boundedTime = max(0, min(self.duration, time))
-                print("Seeking to time: \(boundedTime)")
                 
                 // Execute seek
                 let seekTime = CMTime(seconds: boundedTime, preferredTimescale: 600)
@@ -125,7 +121,6 @@ class VideoControlBarViewModel: ObservableObject {
                                 // Keep paused during transition
                                 self.player.pause()
                                 self.isPlaying = false
-                                print("🔴 Seek during transition - keeping video paused")
                             }
                         }
                         
@@ -156,7 +151,6 @@ class VideoControlBarViewModel: ObservableObject {
     
     /// Seek backward by current step size
     func seekBackward() {
-        print("Seek backward called")
         if isSeekInProgress { return }
         
         // Simple fixed seek - no mark detection
@@ -166,7 +160,6 @@ class VideoControlBarViewModel: ObservableObject {
 
     /// Seek forward by current step size
     func seekForward() {
-        print("Seek forward called")
         if isSeekInProgress { return }
         
         // Simple fixed seek - no mark detection
@@ -175,7 +168,6 @@ class VideoControlBarViewModel: ObservableObject {
     }
 
     private func jumpToMark(direction: Int) {
-        print("Jump to \(direction > 0 ? "next" : "previous") mark called")
         if isSeekInProgress { return }
         
         // Remember current playback state
@@ -216,11 +208,9 @@ class VideoControlBarViewModel: ObservableObject {
             if direction > 0 {
                 // Find next mark
                 targetMark = loopMarks.first(where: { $0 > currentTime + 0.1 }) ?? loopMarks.min()
-                print("Found next mark at: \(String(describing: targetMark))")
             } else {
                 // Find previous mark
                 targetMark = loopMarks.filter({ $0 < currentTime - 0.1 }).max() ?? loopMarks.max()
-                print("Found previous mark at: \(String(describing: targetMark))")
             }
             
             // If found a target mark, seek to it
@@ -457,7 +447,6 @@ class VideoControlBarViewModel: ObservableObject {
         // Skip updates during seeking
         if isSeekInProgress { return }
         
-        print("📊 updatePlayerState called - isPlaying: \\(isPlaying), isTransitionCounterActive: \\(isTransitionCounterActive), player.rate: \\(player.rate)")
         
         // Update current time from player
         let playerTime = CMTimeGetSeconds(player.currentTime())
@@ -673,7 +662,6 @@ class VideoControlBarViewModel: ObservableObject {
         // Skip if already seeking or during transition countdown
         if isSeekInProgress || isTransitionCounterActive { 
             if isTransitionCounterActive {
-                print("⚠️ handleLoopBoundaries skipped - transition active")
             }
             return 
         }
@@ -689,7 +677,6 @@ class VideoControlBarViewModel: ObservableObject {
                 return
             }
             
-            print("Reached segment end, looping back to start of segment")
             lastLoopSeekTime = now
             
             // Simply seek back to the start of the CURRENT segment (not advancing)
@@ -728,32 +715,25 @@ class VideoControlBarViewModel: ObservableObject {
             }
             
             if loopTimeRemaining <= 0 {
-                print("🔴 Loop timer expired, starting transition counter")
-                print("🔴 Before pause - isPlaying: \(isPlaying), player.rate: \(player.rate)")
                 
                 // Pause the video - ensure it's fully stopped
                 player.pause()
                 isPlaying = false
                 
-                print("🔴 After pause - isPlaying: \(isPlaying), player.rate: \(player.rate)")
-                print("🔴 Video paused for transition countdown")
                 
                 // Start transition counter
                 loopTimerActive = false
                 isTransitionCounterActive = true
                 transitionTimeRemaining = TimerConstants.transitionDuration
                 
-                print("🔴 Transition state set - isTransitionCounterActive: \(isTransitionCounterActive)")
             }
         }
         
         // Handle transition counter
         if isTransitionCounterActive {
             transitionTimeRemaining -= 0.5
-            print("🟡 Transition countdown: \(transitionTimeRemaining), player.rate: \(player.rate)")
             
             if transitionTimeRemaining <= 0 {
-                print("Transition counter finished, advancing to next segment")
                 
                 // Advance to the next segment
                 if currentSegmentIndex < loopMarks.count - 2 {
@@ -766,12 +746,9 @@ class VideoControlBarViewModel: ObservableObject {
                 moveToCurrentSegment()
                 
                 // Resume playback and reset loop timer
-                print("🟢 Transition finished, resuming playback in 0.2s")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    print("🟢 Resuming playback - calling player.play()")
                     self.player.play()
                     self.isPlaying = true
-                    print("🟢 After resume - isPlaying: \(self.isPlaying), player.rate: \(self.player.rate)")
                 }
                 
                 // Reset both timers
