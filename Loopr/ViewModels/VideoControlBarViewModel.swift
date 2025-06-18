@@ -74,9 +74,13 @@ class VideoControlBarViewModel: ObservableObject {
         isPlaying.toggle()
         
         // Explicitly set player state based on isPlaying
-        if isPlaying {
+        // Don't play during transition countdown
+        print("updatePlayerState - isPlaying: \(isPlaying), isTransitionCounterActive: \(isTransitionCounterActive)")
+        if isPlaying && !isTransitionCounterActive {
+            print("updatePlayerState - calling player.play()")
             player.play()
         } else {
+            print("updatePlayerState - calling player.pause()")
             player.pause()
         }
     }
@@ -113,10 +117,15 @@ class VideoControlBarViewModel: ObservableObject {
                         if finished {
                             self.currentTime = boundedTime
                             
-                            // Resume playback if it was playing before
-                            if self.wasPlayingBeforeSeek && self.isLooping {
+                            // Resume playback if it was playing before, but NOT during transition
+                            if self.wasPlayingBeforeSeek && self.isLooping && !self.isTransitionCounterActive {
                                 self.player.play()
                                 self.isPlaying = true
+                            } else if self.isTransitionCounterActive {
+                                // Keep paused during transition
+                                self.player.pause()
+                                self.isPlaying = false
+                                print("🔴 Seek during transition - keeping video paused")
                             }
                         }
                         
@@ -448,6 +457,8 @@ class VideoControlBarViewModel: ObservableObject {
         // Skip updates during seeking
         if isSeekInProgress { return }
         
+        print("📊 updatePlayerState called - isPlaying: \\(isPlaying), isTransitionCounterActive: \\(isTransitionCounterActive), player.rate: \\(player.rate)")
+        
         // Update current time from player
         let playerTime = CMTimeGetSeconds(player.currentTime())
         if !playerTime.isNaN && playerTime.isFinite {
@@ -659,8 +670,13 @@ class VideoControlBarViewModel: ObservableObject {
     
     // FIX: Updated handleLoopBoundaries with debounce
     private func handleLoopBoundaries() {
-        // Skip if already seeking
-        if isSeekInProgress { return }
+        // Skip if already seeking or during transition countdown
+        if isSeekInProgress || isTransitionCounterActive { 
+            if isTransitionCounterActive {
+                print("⚠️ handleLoopBoundaries skipped - transition active")
+            }
+            return 
+        }
         
         let segmentStart = getCurrentSegmentStart()
         let segmentEnd = getCurrentSegmentEnd()
@@ -712,24 +728,29 @@ class VideoControlBarViewModel: ObservableObject {
             }
             
             if loopTimeRemaining <= 0 {
-                print("Loop timer expired, starting transition counter")
+                print("🔴 Loop timer expired, starting transition counter")
+                print("🔴 Before pause - isPlaying: \(isPlaying), player.rate: \(player.rate)")
                 
-                // Pause the video
-                if isPlaying {
-                    player.pause()
-                    isPlaying = false
-                }
+                // Pause the video - ensure it's fully stopped
+                player.pause()
+                isPlaying = false
+                
+                print("🔴 After pause - isPlaying: \(isPlaying), player.rate: \(player.rate)")
+                print("🔴 Video paused for transition countdown")
                 
                 // Start transition counter
                 loopTimerActive = false
                 isTransitionCounterActive = true
                 transitionTimeRemaining = TimerConstants.transitionDuration
+                
+                print("🔴 Transition state set - isTransitionCounterActive: \(isTransitionCounterActive)")
             }
         }
         
         // Handle transition counter
         if isTransitionCounterActive {
             transitionTimeRemaining -= 0.5
+            print("🟡 Transition countdown: \(transitionTimeRemaining), player.rate: \(player.rate)")
             
             if transitionTimeRemaining <= 0 {
                 print("Transition counter finished, advancing to next segment")
@@ -745,9 +766,12 @@ class VideoControlBarViewModel: ObservableObject {
                 moveToCurrentSegment()
                 
                 // Resume playback and reset loop timer
+                print("🟢 Transition finished, resuming playback in 0.2s")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    print("🟢 Resuming playback - calling player.play()")
                     self.player.play()
                     self.isPlaying = true
+                    print("🟢 After resume - isPlaying: \(self.isPlaying), player.rate: \(self.player.rate)")
                 }
                 
                 // Reset both timers
