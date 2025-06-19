@@ -668,6 +668,7 @@ class VideoControlBarViewModel: ObservableObject {
         
         let segmentStart = getCurrentSegmentStart()
         let segmentEnd = getCurrentSegmentEnd()
+        let segmentDuration = segmentEnd - segmentStart
         let now = Date().timeIntervalSince1970
         
         // Check if we've reached the end of the current segment
@@ -679,11 +680,23 @@ class VideoControlBarViewModel: ObservableObject {
             
             lastLoopSeekTime = now
             
-            // Simply seek back to the start of the CURRENT segment (not advancing)
-            seekToTime(segmentStart)
-            
-            // Note: The loop timer continues to run independently and will
-            // trigger segment advancement when it expires
+            // If segment is longer than timer duration and timer is not active,
+            // advance to next segment (for long segments that played to completion)
+            if segmentDuration > TimerConstants.loopDuration && !loopTimerActive {
+                // Pause the video
+                player.pause()
+                isPlaying = false
+                
+                // Start transition counter to advance to next segment
+                isTransitionCounterActive = true
+                transitionTimeRemaining = TimerConstants.transitionDuration
+            } else {
+                // Original behavior: loop back to start of current segment
+                seekToTime(segmentStart)
+                
+                // Note: The loop timer continues to run independently and will
+                // trigger segment advancement when it expires
+            }
         }
         // If we're before the segment start (e.g., user scrubbed back), jump to segment start
         else if currentTime < segmentStart {
@@ -715,17 +728,26 @@ class VideoControlBarViewModel: ObservableObject {
             }
             
             if loopTimeRemaining <= 0 {
+                let segmentStart = getCurrentSegmentStart()
+                let segmentEnd = getCurrentSegmentEnd()
+                let segmentDuration = segmentEnd - segmentStart
                 
-                // Pause the video - ensure it's fully stopped
-                player.pause()
-                isPlaying = false
-                
-                
-                // Start transition counter
-                loopTimerActive = false
-                isTransitionCounterActive = true
-                transitionTimeRemaining = TimerConstants.transitionDuration
-                
+                // If segment is longer than timer duration, play until segment end
+                if segmentDuration > TimerConstants.loopDuration {
+                    // Disable loop timer and let segment play to completion
+                    loopTimerActive = false
+                    // Note: handleLoopBoundaries() will detect when we reach segment end
+                    // and trigger advancement in the existing logic
+                } else {
+                    // Original behavior: pause and start transition counter
+                    player.pause()
+                    isPlaying = false
+                    
+                    // Start transition counter
+                    loopTimerActive = false
+                    isTransitionCounterActive = true
+                    transitionTimeRemaining = TimerConstants.transitionDuration
+                }
             }
         }
         
