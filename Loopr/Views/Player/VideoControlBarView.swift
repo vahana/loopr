@@ -153,12 +153,29 @@ struct VideoControlBarView: View {
                 activeColor: viewModel.isLooping ? .green.opacity(0.7) : nil,
                 isDisabled: viewModel.loopMarks.count < 2
             )
+            
+            Button {
+                viewModel.toggleLoopDuration()
+            } label: {
+                Text(viewModel.formatLoopDuration())
+                    .font(.system(size: 16))
+                    .frame(width: UI.seekButtonWidth, height: UI.buttonHeight)
+                    .background(buttonBackgroundColor(for: .loopDurationToggle))
+                    .cornerRadius(UI.cornerRadius)
+            }
+            .buttonStyle(.card)
+            .focused($focusedControl, equals: .loopDurationToggle)
         }
     }
     
     /// Timer controls
     private var timerControls: some View {
         HStack(spacing: 10) {
+            // Transition timer controls group (includes its own dividers)
+            transitionTimerControls
+            
+            Spacer().frame(width: 10)
+            
             controlButton(
                 for: .startTimer,
                 icon: "timer",
@@ -166,6 +183,16 @@ struct VideoControlBarView: View {
                 action: viewModel.startTimer,
                 activeColor: viewModel.isTimerRunning ? .yellow.opacity(0.7) : nil
             )
+            
+            clearMarksButton
+        }
+        .padding(.horizontal, 6)
+    }
+    
+    /// Transition timer controls group
+    private var transitionTimerControls: some View {
+        HStack(spacing: UI.controlSpacing) {
+            Divider().frame(height: 30)
             
             controlButton(
                 for: .transitionTimerToggle,
@@ -175,9 +202,20 @@ struct VideoControlBarView: View {
                 activeColor: viewModel.isTransitionTimerEnabled ? .blue.opacity(0.7) : .gray.opacity(0.5)
             )
             
-            clearMarksButton
+            Button {
+                viewModel.toggleTransitionDuration()
+            } label: {
+                Text(viewModel.formatTransitionDuration())
+                    .font(.system(size: 16))
+                    .frame(width: UI.seekButtonWidth, height: UI.buttonHeight)
+                    .background(buttonBackgroundColor(for: .transitionDurationToggle))
+                    .cornerRadius(UI.cornerRadius)
+            }
+            .buttonStyle(.card)
+            .focused($focusedControl, equals: .transitionDurationToggle)
+            
+            Divider().frame(height: 30)
         }
-        .padding(.horizontal, 6)
     }
     
     /// Clear marks button
@@ -289,5 +327,6 @@ enum VideoControlFocus: Int {
     case startTimer, clearMarks
     case seekStepToggle
     case fineTuneLeft, fineTuneRight
-    case transitionTimerToggle
+    case transitionTimerToggle, transitionDurationToggle
+    case loopDurationToggle
 }

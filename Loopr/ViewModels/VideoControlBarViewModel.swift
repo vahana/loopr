@@ -11,8 +11,10 @@ class VideoControlBarViewModel: ObservableObject {
     }
     
     private struct TimerConstants {
-        static let loopDuration: Double = 30.0
-        static let transitionDuration: Double = 10.0
+        static let loopDurationOptions: [Double] = [30.0, 60.0, 90.0]
+        static let defaultLoopIndex: Int = 0  // Index for 30.0
+        static let transitionDurationOptions: [Double] = [10.0, 20.0, 30.0]
+        static let defaultTransitionIndex: Int = 0  // Index for 10.0
     }
     
     // MARK: - Published Properties
@@ -26,16 +28,23 @@ class VideoControlBarViewModel: ObservableObject {
     @Published var timerSeconds: Int = 0
     @Published var isTimerRunning = false
     @Published var loopTimerActive: Bool = false
-    @Published var loopTimeRemaining: Double = TimerConstants.loopDuration
+    @Published var loopTimeRemaining: Double = TimerConstants.loopDurationOptions[TimerConstants.defaultLoopIndex]
     @Published var isTransitionCounterActive: Bool = false
-    @Published var transitionTimeRemaining: Double = TimerConstants.transitionDuration
+    @Published var transitionTimeRemaining: Double = TimerConstants.transitionDurationOptions[TimerConstants.defaultTransitionIndex]
     @Published var isTransitionTimerEnabled: Bool = true
+    @Published var transitionDuration: Double = TimerConstants.transitionDurationOptions[TimerConstants.defaultTransitionIndex]
+    @Published var loopDuration: Double = TimerConstants.loopDurationOptions[TimerConstants.defaultLoopIndex]
     
     // Track the current index in the step size options
     private var currentStepSizeIndex: Int = SeekStepSizes.defaultIndex
     
+    // Track the current index in the transition duration options
+    private var currentTransitionDurationIndex: Int = TimerConstants.defaultTransitionIndex
+    
+    // Track the current index in the loop duration options
+    private var currentLoopDurationIndex: Int = TimerConstants.defaultLoopIndex
+    
     // MARK: - Constants Access
-    var transitionDuration: Double { TimerConstants.transitionDuration }
     
     // MARK: - Properties
     var player: AVPlayer
@@ -139,6 +148,28 @@ class VideoControlBarViewModel: ObservableObject {
         seekStepSize = SeekStepSizes.options[currentStepSizeIndex]
     }
     
+    func toggleTransitionDuration() {
+        // Cycle to the next transition duration in the options array
+        currentTransitionDurationIndex = (currentTransitionDurationIndex + 1) % TimerConstants.transitionDurationOptions.count
+        transitionDuration = TimerConstants.transitionDurationOptions[currentTransitionDurationIndex]
+        
+        // Update transition time remaining if currently active
+        if isTransitionCounterActive {
+            transitionTimeRemaining = transitionDuration
+        }
+    }
+    
+    func toggleLoopDuration() {
+        // Cycle to the next loop duration in the options array
+        currentLoopDurationIndex = (currentLoopDurationIndex + 1) % TimerConstants.loopDurationOptions.count
+        loopDuration = TimerConstants.loopDurationOptions[currentLoopDurationIndex]
+        
+        // Update loop time remaining if currently active
+        if loopTimerActive {
+            loopTimeRemaining = loopDuration
+        }
+    }
+    
     /// Format the seek step size for display
     func formatSeekStepSize() -> String {
         // If the value is a whole number, display as integer
@@ -148,6 +179,16 @@ class VideoControlBarViewModel: ObservableObject {
             // For decimal values, show one decimal place
             return String(format: "%.1fs", seekStepSize)
         }
+    }
+    
+    /// Format the transition duration for display
+    func formatTransitionDuration() -> String {
+        return "\(Int(transitionDuration))s"
+    }
+    
+    /// Format the loop duration for display
+    func formatLoopDuration() -> String {
+        return "\(Int(loopDuration))s"
     }
     
     /// Seek backward by current step size
@@ -346,7 +387,7 @@ class VideoControlBarViewModel: ObservableObject {
         
         if isLooping {
             loopTimerActive = true
-            loopTimeRemaining = 30.0
+            loopTimeRemaining = loopDuration
             
             updateCurrentSegmentIndex()
             moveToCurrentSegment()
@@ -601,9 +642,9 @@ class VideoControlBarViewModel: ObservableObject {
     
     private func resetLoopTimer() {
         loopTimerActive = true
-        loopTimeRemaining = TimerConstants.loopDuration
+        loopTimeRemaining = loopDuration
         isTransitionCounterActive = false
-        transitionTimeRemaining = TimerConstants.transitionDuration
+        transitionTimeRemaining = transitionDuration
         lastCountdownSecond = -1  // Reset countdown sound tracking
     }
     
@@ -683,7 +724,7 @@ class VideoControlBarViewModel: ObservableObject {
             
             // If segment is longer than timer duration and timer is not active,
             // advance to next segment (for long segments that played to completion)
-            if segmentDuration > TimerConstants.loopDuration && !loopTimerActive {
+            if segmentDuration > loopDuration && !loopTimerActive {
                 if isTransitionTimerEnabled {
                     // Pause the video
                     player.pause()
@@ -691,7 +732,7 @@ class VideoControlBarViewModel: ObservableObject {
                     
                     // Start transition counter to advance to next segment
                     isTransitionCounterActive = true
-                    transitionTimeRemaining = TimerConstants.transitionDuration
+                    transitionTimeRemaining = transitionDuration
                 } else {
                     // Skip transition timer and advance immediately
                     advanceToNextSegment()
@@ -739,7 +780,7 @@ class VideoControlBarViewModel: ObservableObject {
                 let segmentDuration = segmentEnd - segmentStart
                 
                 // If segment is longer than timer duration, play until segment end
-                if segmentDuration > TimerConstants.loopDuration {
+                if segmentDuration > loopDuration {
                     // Disable loop timer and let segment play to completion
                     loopTimerActive = false
                     // Note: handleLoopBoundaries() will detect when we reach segment end
@@ -754,7 +795,7 @@ class VideoControlBarViewModel: ObservableObject {
                         // Start transition counter
                         loopTimerActive = false
                         isTransitionCounterActive = true
-                        transitionTimeRemaining = TimerConstants.transitionDuration
+                        transitionTimeRemaining = transitionDuration
                     } else {
                         // Skip transition timer and advance immediately
                         advanceToNextSegment()
