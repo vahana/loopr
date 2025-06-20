@@ -167,6 +167,14 @@ struct VideoControlBarView: View {
                 activeColor: viewModel.isTimerRunning ? .yellow.opacity(0.7) : nil
             )
             
+            controlButton(
+                for: .transitionTimerToggle,
+                icon: "clock.arrow.2.circlepath",
+                width: UI.seekButtonWidth,
+                action: { viewModel.isTransitionTimerEnabled.toggle() },
+                activeColor: viewModel.isTransitionTimerEnabled ? .blue.opacity(0.7) : .gray.opacity(0.5)
+            )
+            
             clearMarksButton
         }
         .padding(.horizontal, 6)
@@ -281,4 +289,5 @@ enum VideoControlFocus: Int {
     case startTimer, clearMarks
     case seekStepToggle
     case fineTuneLeft, fineTuneRight
+    case transitionTimerToggle
 }

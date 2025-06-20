@@ -29,6 +29,7 @@ class VideoControlBarViewModel: ObservableObject {
     @Published var loopTimeRemaining: Double = TimerConstants.loopDuration
     @Published var isTransitionCounterActive: Bool = false
     @Published var transitionTimeRemaining: Double = TimerConstants.transitionDuration
+    @Published var isTransitionTimerEnabled: Bool = true
     
     // Track the current index in the step size options
     private var currentStepSizeIndex: Int = SeekStepSizes.defaultIndex
@@ -683,13 +684,18 @@ class VideoControlBarViewModel: ObservableObject {
             // If segment is longer than timer duration and timer is not active,
             // advance to next segment (for long segments that played to completion)
             if segmentDuration > TimerConstants.loopDuration && !loopTimerActive {
-                // Pause the video
-                player.pause()
-                isPlaying = false
-                
-                // Start transition counter to advance to next segment
-                isTransitionCounterActive = true
-                transitionTimeRemaining = TimerConstants.transitionDuration
+                if isTransitionTimerEnabled {
+                    // Pause the video
+                    player.pause()
+                    isPlaying = false
+                    
+                    // Start transition counter to advance to next segment
+                    isTransitionCounterActive = true
+                    transitionTimeRemaining = TimerConstants.transitionDuration
+                } else {
+                    // Skip transition timer and advance immediately
+                    advanceToNextSegment()
+                }
             } else {
                 // Original behavior: loop back to start of current segment
                 seekToTime(segmentStart)
@@ -739,14 +745,20 @@ class VideoControlBarViewModel: ObservableObject {
                     // Note: handleLoopBoundaries() will detect when we reach segment end
                     // and trigger advancement in the existing logic
                 } else {
-                    // Original behavior: pause and start transition counter
-                    player.pause()
-                    isPlaying = false
-                    
-                    // Start transition counter
-                    loopTimerActive = false
-                    isTransitionCounterActive = true
-                    transitionTimeRemaining = TimerConstants.transitionDuration
+                    // Check if transition timer is enabled
+                    if isTransitionTimerEnabled {
+                        // Original behavior: pause and start transition counter
+                        player.pause()
+                        isPlaying = false
+                        
+                        // Start transition counter
+                        loopTimerActive = false
+                        isTransitionCounterActive = true
+                        transitionTimeRemaining = TimerConstants.transitionDuration
+                    } else {
+                        // Skip transition timer and advance immediately
+                        advanceToNextSegment()
+                    }
                 }
             }
         }
@@ -792,5 +804,27 @@ class VideoControlBarViewModel: ObservableObject {
             AudioServicesPlaySystemSound(1009) // Begin recording sound - more prominent
             AudioServicesPlayAlertSound(1009)
         }
+    }
+    
+    /// Advance to the next segment immediately (used when transition timer is disabled)
+    private func advanceToNextSegment() {
+        // Advance to the next segment
+        if currentSegmentIndex < loopMarks.count - 2 {
+            currentSegmentIndex += 1
+        } else {
+            currentSegmentIndex = 0  // Loop back to first segment
+        }
+        
+        // Move to the new segment
+        moveToCurrentSegment()
+        
+        // Resume playback and reset loop timer
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            self.player.play()
+            self.isPlaying = true
+        }
+        
+        // Reset loop timer
+        resetLoopTimer()
     }
 }
