@@ -116,7 +116,7 @@ struct VideoPlayerView: View {
             return .handled
         }
         .onKeyPress("l") {
-            viewModel.toggleLoop()
+            viewModel.toggleLoopDuration()
             return .handled
         }
         .onKeyPress("c") {

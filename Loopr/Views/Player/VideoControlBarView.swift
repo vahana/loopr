@@ -146,14 +146,6 @@ struct VideoControlBarView: View {
                 action: viewModel.finetuneMarkRight
             )
             
-            controlButton(
-                for: .toggleLoop,
-                icon: "repeat",
-                action: viewModel.toggleLoop,
-                activeColor: viewModel.isLooping ? .green.opacity(0.7) : nil,
-                isDisabled: viewModel.loopMarks.count < 2
-            )
-            
             Button {
                 viewModel.toggleLoopDuration()
             } label: {
@@ -193,14 +185,6 @@ struct VideoControlBarView: View {
     private var transitionTimerControls: some View {
         HStack(spacing: UI.controlSpacing) {
             Divider().frame(height: 30)
-            
-            controlButton(
-                for: .transitionTimerToggle,
-                icon: "clock.arrow.2.circlepath",
-                width: UI.seekButtonWidth,
-                action: { viewModel.isTransitionTimerEnabled.toggle() },
-                activeColor: viewModel.isTransitionTimerEnabled ? .blue.opacity(0.7) : .gray.opacity(0.5)
-            )
             
             Button {
                 viewModel.toggleTransitionDuration()
@@ -323,10 +307,10 @@ struct VideoControlBarView: View {
 /// Focus state for controls
 enum VideoControlFocus: Int {
     case seekBackward, seekForward
-    case addMark, toggleLoop
+    case addMark
     case startTimer, clearMarks
     case seekStepToggle
     case fineTuneLeft, fineTuneRight
-    case transitionTimerToggle, transitionDurationToggle
+    case transitionDurationToggle
     case loopDurationToggle
 }
